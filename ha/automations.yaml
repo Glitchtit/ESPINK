@@ -1,0 +1,82 @@
+# ESPINK — Home Assistant examples (adapt entity IDs to your setup).
+#
+# The Z2M converter exposes one writable entity per slot, e.g.
+#   text.espink_7in5b_hdr_left, text.espink_7in5b_now_value, ...
+#   switch.espink_7in5b_alert_active
+# Confirm the exact IDs under Settings -> Devices -> ESPINK-7in5b.
+#
+# Keep every value <= 60 chars (one Zigbee write, no fragmentation). The icon
+# convention for now_label / forecast tokens (sun, cloud, rain, storm, snow,
+# fog, wind, partly, clear-night) matches main/display.c::icon_glyph.
+
+# ---------------------------------------------------------------------------
+# Reusable script: compute all slot values and push them to the device.
+# ---------------------------------------------------------------------------
+script:
+  espink_push_dashboard:
+    alias: ESPINK push dashboard
+    sequence:
+      - variables:
+          w: weather.home                       # your weather entity
+          cal: calendar.personal                # your calendar entity
+      - action: text.set_value
+        target: {entity_id: text.espink_7in5b_hdr_left}
+        data: {value: "{{ now().strftime('%a %-d %b') }}"}
+      - action: text.set_value
+        target: {entity_id: text.espink_7in5b_hdr_right}
+        data: {value: "Updated {{ now().strftime('%H:%M') }}"}
+      - action: text.set_value
+        target: {entity_id: text.espink_7in5b_now_value}
+        data: {value: "{{ state_attr(w,'temperature') | round(0) }}°"}
+      - action: text.set_value
+        target: {entity_id: text.espink_7in5b_now_label}
+        # map HA condition -> "icon:Text"; trim to 60 chars
+        data:
+          value: >-
+            {% set c = states(w) %}
+            {% set icon = {'sunny':'sun','clear-night':'clear-night',
+              'partlycloudy':'partly','cloudy':'cloud','rainy':'rain',
+              'pouring':'rain','lightning':'storm','snowy':'snow',
+              'fog':'fog','windy':'wind'}.get(c,'cloud') %}
+            {{ (icon ~ ':' ~ c | replace('-',' ') | title)[:60] }}
+      - action: text.set_value
+        target: {entity_id: text.espink_7in5b_sns1}
+        data: {value: "Indoor: {{ states('sensor.living_room_temperature') }}°C"}
+      - action: text.set_value
+        target: {entity_id: text.espink_7in5b_sns2}
+        data: {value: "Humidity: {{ states('sensor.living_room_humidity') }}%"}
+      # ... repeat for fc1..fc3, cal1..cal4, sns3/sns4 as needed ...
+      - if: "{{ is_state('binary_sensor.weather_warning','on') }}"
+        then:
+          - action: switch.turn_on
+            target: {entity_id: switch.espink_7in5b_alert_active}
+        else:
+          - action: switch.turn_off
+            target: {entity_id: switch.espink_7in5b_alert_active}
+      - action: text.set_value
+        target: {entity_id: text.espink_7in5b_alert_text}
+        data: {value: "{{ states('input_text.weather_warning_text') }}"}
+
+# ---------------------------------------------------------------------------
+# Phase 1 (USB, always-listening): refresh on a schedule + on source changes.
+# ---------------------------------------------------------------------------
+automation:
+  - alias: ESPINK periodic refresh
+    trigger:
+      - trigger: time_pattern
+        minutes: "/20"
+    action:
+      - action: script.espink_push_dashboard
+
+  # ---------------------------------------------------------------------------
+  # Phase 2 (battery sleepy device): the device wakes ~every 20 min, rejoins,
+  # and its entities become "available" again. Push the current values during
+  # that awake window — this is more reliable than Z2M's long-term queue.
+  # ---------------------------------------------------------------------------
+  - alias: ESPINK push on wake (device online)
+    trigger:
+      - trigger: state
+        entity_id: text.espink_7in5b_hdr_left
+        from: "unavailable"
+    action:
+      - action: script.espink_push_dashboard

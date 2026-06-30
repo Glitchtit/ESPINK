@@ -1,0 +1,12 @@
+# ESP-IDF build output and local config
+/build/
+sdkconfig
+sdkconfig.old
+dependencies.lock
+managed_components/
+
+# Host test artifacts
+/test/host/build/
+
+# Vendored u8g2 upstream clone (re-clone via README); keep our glue files
+/components/u8g2/upstream/
