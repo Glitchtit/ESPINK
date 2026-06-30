@@ -33,7 +33,7 @@ Check, in order:
 | Symptom | Cause | Fix |
 |---------|-------|-----|
 | Nothing happens, log hangs at "POWER ON" | BUSY wiring/polarity, or panel not powered | Verify BUSY GPIO + PWR GPIO; confirm `EPD_BUSY_TIMEOUT_MS` log doesn't fire |
-| Screen all black or garbage | wrong `Display Config` HAT switch, or SPI pins | Set HAT switches (Interface=0, Display per 7.5"B wiki); recheck MOSI/SCK/CS/DC |
+| Screen all black or garbage | wrong HAT switch, or SPI pins | Set **Display Config = B** (0.47R) and **Interface Config = 0** (4-line SPI); recheck MOSI/SCK/CS/DC |
 | Image is photo-negative (black↔white) | plane polarity | flip the send convention in `epd_uc8179_display` (drop/add the `~` on the black plane; the red plane already inverts) |
 | Red where black expected (or none) | red-plane polarity | toggle the `invert` arg on the red `epd_send_plane` call |
 | Text too small / clipped | font choice | swap fonts in `display.c` (e.g. a `logisoso*` font for `now_value`) |

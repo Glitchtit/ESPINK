@@ -34,8 +34,13 @@ Verified on host (no hardware): pure slot logic and the U8g2→plane transpose
 | BUSY| busy (input) | 3 |
 | PWR | panel power gate | 2 |
 
-Set HAT **Display Config** per the Waveshare 7.5"(B) wiki. Adjust the pin map in
-`main/main.c` (`k_pins`) for your board — avoid strapping pins.
+Set the two HAT slide switches for the 7.5" panel:
+
+- **Display Config = B** (0.47R) — the 7.5" / 7.5"(B) panels use the 0.47R
+  booster setting; position A (3R) is for the smaller panels.
+- **Interface Config = 0** (4-line SPI) — this firmware uses 4-wire SPI (DC pin).
+
+Adjust the pin map in `main/main.c` (`k_pins`) for your board — avoid strapping pins.
 
 ## Build & flash
 
