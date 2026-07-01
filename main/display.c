@@ -120,6 +120,21 @@ static void draw_hilo(u8g2_t *u8g2, int x, int y, const uint8_t *font,
     }
 }
 
+/* Draw a value that may be a Celsius temperature. A temperature >= 25 renders in
+ * the red plane, everything else in black. Passing the same call in both passes
+ * draws it exactly once, in the right colour (red_pass == is_red). */
+static void draw_temp_text(u8g2_t *u8g2, int x, int y, const uint8_t *font,
+                           const char *text, bool red_pass)
+{
+    if (text[0] == '\0') {
+        return;
+    }
+    if (red_pass == espink_celsius_at_least(text, RED_HI_THRESHOLD)) {
+        u8g2_SetFont(u8g2, font);
+        u8g2_DrawUTF8(u8g2, x, y, text);
+    }
+}
+
 /* Extract the hi/lo (3rd colon field) of forecast slot i; "" if absent. */
 static void forecast_hilo(const espink_slots_t *s, int i, char *out, size_t n)
 {
@@ -150,9 +165,9 @@ static void draw_black_pass(u8g2_t *u8g2, const espink_slots_t *s)
     u8g2_DrawUTF8(u8g2, ESPINK_FB_WIDTH - M - hrw, HDR_BASE, hr);
     u8g2_DrawHLine(u8g2, M, RULE_Y, ESPINK_FB_WIDTH - 2 * M);
 
-    /* "Now" big value + condition. */
-    u8g2_SetFont(u8g2, u8g2_font_helvB24_tf);
-    u8g2_DrawUTF8(u8g2, NOW_VAL_X, NOW_VAL_BASE, GET(s, ESPINK_ATTR_NOW_VALUE));
+    /* "Now" big value (red when >= 25) + condition. */
+    draw_temp_text(u8g2, NOW_VAL_X, NOW_VAL_BASE, u8g2_font_helvB24_tf,
+                   GET(s, ESPINK_ATTR_NOW_VALUE), false);
 
     espink_split_icon(GET(s, ESPINK_ATTR_NOW_LABEL), token, sizeof(token), &text);
     uint8_t g = icon_glyph(token);
@@ -229,14 +244,13 @@ static void draw_black_pass(u8g2_t *u8g2, const espink_slots_t *s)
         u8g2_DrawUTF8(u8g2, M, CAL_BASE + i * CAL_ROW_H, GET(s, cal[i]));
     }
 
-    /* Sensor tiles (two columns). */
-    u8g2_SetFont(u8g2, u8g2_font_6x13_tf);
+    /* Sensor tiles (two columns; a tile that is a temperature >= 25 is red). */
     const uint16_t sns[] = {ESPINK_ATTR_SNS1, ESPINK_ATTR_SNS2,
                             ESPINK_ATTR_SNS3, ESPINK_ATTR_SNS4};
     for (int i = 0; i < 4; i++) {
         int x = M + (i % 2) * (ESPINK_FB_WIDTH / 2);
         int y = SNS_TOP + (i / 2) * SNS_ROW_H;
-        u8g2_DrawUTF8(u8g2, x, y, GET(s, sns[i]));
+        draw_temp_text(u8g2, x, y, u8g2_font_6x13_tf, GET(s, sns[i]), false);
     }
 }
 
@@ -249,6 +263,21 @@ static void draw_red_pass(u8g2_t *u8g2, const espink_slots_t *s)
     u8g2_DrawBox(u8g2, M, ALERT_BASE - 26, 8, 26);
     u8g2_SetFont(u8g2, u8g2_font_helvB18_tf);
     u8g2_DrawUTF8(u8g2, M + 16, ALERT_BASE, GET(s, ESPINK_ATTR_ALERT_TEXT));
+}
+
+/* Hot current temperatures (>= 25) drawn red: the big now value + any sensor
+ * tile that is itself a Celsius reading. Layout mirrors draw_black_pass exactly. */
+static void draw_temps_red(u8g2_t *u8g2, const espink_slots_t *s)
+{
+    draw_temp_text(u8g2, NOW_VAL_X, NOW_VAL_BASE, u8g2_font_helvB24_tf,
+                   GET(s, ESPINK_ATTR_NOW_VALUE), true);
+    const uint16_t sns[] = {ESPINK_ATTR_SNS1, ESPINK_ATTR_SNS2,
+                            ESPINK_ATTR_SNS3, ESPINK_ATTR_SNS4};
+    for (int i = 0; i < 4; i++) {
+        int x = M + (i % 2) * (ESPINK_FB_WIDTH / 2);
+        int y = SNS_TOP + (i / 2) * SNS_ROW_H;
+        draw_temp_text(u8g2, x, y, u8g2_font_6x13_tf, GET(s, sns[i]), true);
+    }
 }
 
 /* Red highs (>= 25) for today's hi/lo and the forecast columns. */
@@ -304,6 +333,7 @@ esp_err_t espink_display_render(espink_display_t *d, const espink_slots_t *slots
     draw_red_pass(&d->u8g2, slots);
     draw_headache_red(&d->u8g2, slots);
     draw_hilo_red(&d->u8g2, slots);
+    draw_temps_red(&d->u8g2, slots);
     espink_u8g2_to_plane(d->u8g2buf, d->red);
 
     ESP_LOGI(TAG, "rendering frame (full refresh)");

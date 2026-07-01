@@ -127,9 +127,30 @@ static void test_headache_level(void) {
     CHECK(espink_headache_level(999) == 5, "over-range clamps to Severe(5)");
 }
 
+static void test_celsius_at_least(void) {
+    printf("test_celsius_at_least\n");
+    /* Plain big-value temperatures. */
+    CHECK(espink_celsius_at_least("27C", 25.0), "27C >= 25");
+    CHECK(!espink_celsius_at_least("24C", 25.0), "24C < 25");
+    CHECK(espink_celsius_at_least("25C", 25.0), "25C == 25 (inclusive)");
+    /* Sensor-tile style with a label prefix and a decimal. */
+    CHECK(!espink_celsius_at_least("Living room: 24.0C", 25.0), "24.0C < 25");
+    CHECK(espink_celsius_at_least("Living room: 26.0C", 25.0), "26.0C >= 25");
+    /* Degree sign (UTF-8 0xC2 0xB0). */
+    CHECK(!espink_celsius_at_least("Indoor: 22.5\xC2\xB0""C", 25.0), "22.5C < 25");
+    CHECK(espink_celsius_at_least("Indoor: 25.0\xC2\xB0""C", 25.0), "25.0C >= 25");
+    /* Non-Celsius tiles never count. */
+    CHECK(!espink_celsius_at_least("Humidity: 47%", 25.0), "humidity not a temp");
+    CHECK(!espink_celsius_at_least("CO2: 640 ppm", 25.0), "co2 not a temp");
+    CHECK(!espink_celsius_at_least("Air quality: 29", 25.0), "no trailing C");
+    CHECK(!espink_celsius_at_least("", 25.0), "empty not a temp");
+    CHECK(!espink_celsius_at_least("C", 25.0), "bare C has no number");
+}
+
 int main(void) {
     test_attr_index_mapping();
     test_headache_level();
+    test_celsius_at_least();
     test_set_and_get();
     test_set_unknown_attr();
     test_set_truncates_overlong();

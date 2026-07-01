@@ -1,5 +1,6 @@
 /* ESPINK slot store — pure C implementation (see slots.h). */
 #include "slots.h"
+#include <stdlib.h>
 #include <string.h>
 
 /* Attribute ID for each slot index, in order. Index N corresponds to
@@ -113,6 +114,55 @@ void espink_split_icon(const char *value, char *token_out, size_t token_sz,
 bool espink_coalesce_due(int64_t last_dirty_us, int64_t now_us, int64_t debounce_us)
 {
     return (now_us - last_dirty_us) >= debounce_us;
+}
+
+bool espink_celsius_at_least(const char *s, double threshold)
+{
+    size_t len = strlen(s);
+    while (len > 0 && s[len - 1] == ' ') {
+        len--;
+    }
+    if (len == 0 || s[len - 1] != 'C') {
+        return false; /* must end in 'C' */
+    }
+    len--;
+    while (len > 0 && s[len - 1] == ' ') {
+        len--;
+    }
+    /* optional degree sign (UTF-8 0xC2 0xB0) */
+    if (len >= 2 && (unsigned char)s[len - 1] == 0xB0 && (unsigned char)s[len - 2] == 0xC2) {
+        len -= 2;
+    }
+    while (len > 0 && s[len - 1] == ' ') {
+        len--;
+    }
+    /* scan back over the number */
+    size_t end = len;
+    while (len > 0) {
+        char c = s[len - 1];
+        if ((c >= '0' && c <= '9') || c == '.' || c == '-') {
+            len--;
+        } else {
+            break;
+        }
+    }
+    bool has_digit = false;
+    for (size_t i = len; i < end; i++) {
+        if (s[i] >= '0' && s[i] <= '9') {
+            has_digit = true;
+        }
+    }
+    if (!has_digit) {
+        return false;
+    }
+    char buf[16];
+    size_t n = end - len;
+    if (n > sizeof(buf) - 1) {
+        n = sizeof(buf) - 1;
+    }
+    memcpy(buf, s + len, n);
+    buf[n] = '\0';
+    return atof(buf) >= threshold;
 }
 
 int espink_headache_level(int value)

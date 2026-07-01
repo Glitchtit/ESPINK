@@ -71,6 +71,12 @@ void espink_split_icon(const char *value, char *token_out, size_t token_sz,
  * coalescing window has closed and it is time to repaint. */
 bool espink_coalesce_due(int64_t last_dirty_us, int64_t now_us, int64_t debounce_us);
 
+/* True if `s` ends with a Celsius temperature that is >= threshold. Recognises
+ * an optional label prefix, a decimal, an optional degree sign, e.g.
+ * "27C", "Living room: 26.0C", "Indoor: 25.0°C". Non-temperature strings
+ * ("Humidity: 47%") are always false. Used to render hot temperatures red. */
+bool espink_celsius_at_least(const char *s, double threshold);
+
 /* Map a headache index (0-100) to a severity level 1..5 (matching the HA card
  * bands: <20 Low, <40 Slight, <60 Moderate, <80 High, else Severe). Values are
  * clamped, so out-of-range input still yields 1..5. */
