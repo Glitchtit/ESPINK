@@ -339,12 +339,22 @@ static void draw_headache_panel(u8g2_t *u8g2, const espink_slots_t *s)
     u8g2_SetFont(u8g2, u8g2_font_helvB18_tf);
     u8g2_DrawUTF8(u8g2, HDC_TEXT_X, 154, buf);
 
-    /* Moon phase (sns3 = "state:Friendly Name") in the panel's lower area. */
+    /* Moon phase (sns3 = "state:Friendly Name") in the panel's lower area. The
+     * moon state isn't a weather icon token, so split on the first colon here
+     * rather than via espink_split_icon (which only splits known icon keywords). */
     const char *moon = GET(s, ESPINK_ATTR_SNS3);
     if (moon[0] != '\0') {
-        char tok[24];
-        const char *name;
-        espink_split_icon(moon, tok, sizeof(tok), &name);
+        const char *colon = strchr(moon, ':');
+        const char *name = colon ? colon + 1 : moon;
+        char tok[24] = "";
+        if (colon) {
+            size_t n = (size_t)(colon - moon);
+            if (n >= sizeof(tok)) {
+                n = sizeof(tok) - 1;
+            }
+            memcpy(tok, moon, n);
+            tok[n] = '\0';
+        }
         draw_moon(u8g2, 462, 208, 20, moon_phase_fraction(tok));
         u8g2_SetFont(u8g2, u8g2_font_helvR14_tf);
         u8g2_DrawUTF8(u8g2, 500, 214, name);
