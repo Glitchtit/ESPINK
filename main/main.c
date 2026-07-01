@@ -72,7 +72,7 @@ void app_main(void)
     /* Clear once so a freshly powered panel shows white until the first push. */
     epd_uc8179_clear(epd);
 
-    xTaskCreate(render_task, "espink_render", 4096, NULL, 4, &s_render_task);
+    xTaskCreate(render_task, "espink_render", 8192, NULL, 4, &s_render_task);
     espink_zigbee_start(on_repaint_due, NULL);
 
     ESP_LOGI(TAG, "ready; waiting for Zigbee slot writes");
