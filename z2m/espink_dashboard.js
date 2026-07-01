@@ -16,16 +16,26 @@ const {Zcl} = require('zigbee-herdsman');
 const m = require('zigbee-herdsman-converters/lib/modernExtend');
 
 const CLUSTER = 'espinkDashboard';
-/* The firmware registers cluster 0xFC00 as a PLAIN custom cluster (no
- * manufacturer code), so writes here must NOT carry one either. If writes ever
- * fail with "no matching cluster/attribute", add a manufacturerCode on BOTH the
- * device attributes and here (manufacturerCode + ID on deviceAddCustomCluster). */
+/* Plain custom cluster (no manufacturer code). Each attribute below MUST carry
+ * `write: true` (and `read: true`) or herdsman's processAttributeWrite rejects
+ * the set client-side with "NOT_AUTHORIZED ... is not writable" before anything
+ * reaches the device. Adding a manufacturerCode here is unnecessary and breaks
+ * Z2M's cluster name-resolution ("has no input cluster"), so we omit it. */
 const opts = {disableDefaultResponse: true};
+
+/* The modernExtend text() convertSet calls `validate(value)` unconditionally
+ * (no default), so every m.text MUST supply a validate function or Z2M throws
+ * "TypeError: validate is not a function" before transmitting. We also use it to
+ * enforce the firmware's per-slot limit (<= 60 chars; no APS fragmentation). */
+const validateSlot = (value) => {
+    if (typeof value !== 'string') throw new Error('ESPINK slot value must be a string');
+    if (value.length > 60) throw new Error('ESPINK slot value too long (max 60 chars)');
+};
 
 /* Helper: one writable text slot -> HA `text` entity. */
 const slot = (name, attribute, description) =>
-    m.text({name, cluster: CLUSTER, attribute, description,
-            access: 'ALL', zigbeeCommandOptions: opts, entityCategory: 'config'});
+    m.text({name, cluster: CLUSTER, attribute, description, access: 'ALL',
+            zigbeeCommandOptions: opts, entityCategory: 'config', validate: validateSlot});
 
 const definition = {
     zigbeeModel: ['ESPINK-7in5b'],
@@ -36,23 +46,25 @@ const definition = {
         m.deviceAddCustomCluster(CLUSTER, {
             ID: 0xfc00,
             attributes: {
-                hdrLeft:     {ID: 0x0000, type: Zcl.DataType.CHAR_STR},
-                hdrRight:    {ID: 0x0001, type: Zcl.DataType.CHAR_STR},
-                nowValue:    {ID: 0x0010, type: Zcl.DataType.CHAR_STR},
-                nowLabel:    {ID: 0x0011, type: Zcl.DataType.CHAR_STR},
-                fc1:         {ID: 0x0020, type: Zcl.DataType.CHAR_STR},
-                fc2:         {ID: 0x0021, type: Zcl.DataType.CHAR_STR},
-                fc3:         {ID: 0x0022, type: Zcl.DataType.CHAR_STR},
-                cal1:        {ID: 0x0030, type: Zcl.DataType.CHAR_STR},
-                cal2:        {ID: 0x0031, type: Zcl.DataType.CHAR_STR},
-                cal3:        {ID: 0x0032, type: Zcl.DataType.CHAR_STR},
-                cal4:        {ID: 0x0033, type: Zcl.DataType.CHAR_STR},
-                sns1:        {ID: 0x0040, type: Zcl.DataType.CHAR_STR},
-                sns2:        {ID: 0x0041, type: Zcl.DataType.CHAR_STR},
-                sns3:        {ID: 0x0042, type: Zcl.DataType.CHAR_STR},
-                sns4:        {ID: 0x0043, type: Zcl.DataType.CHAR_STR},
-                alertText:   {ID: 0x0050, type: Zcl.DataType.CHAR_STR},
-                alertActive: {ID: 0x0051, type: Zcl.DataType.BOOLEAN},
+                // `write: true` + `read: true` are REQUIRED — herdsman rejects
+                // the set client-side otherwise ("... is not writable").
+                hdrLeft:     {ID: 0x0000, type: Zcl.DataType.CHAR_STR, read: true, write: true},
+                hdrRight:    {ID: 0x0001, type: Zcl.DataType.CHAR_STR, read: true, write: true},
+                nowValue:    {ID: 0x0010, type: Zcl.DataType.CHAR_STR, read: true, write: true},
+                nowLabel:    {ID: 0x0011, type: Zcl.DataType.CHAR_STR, read: true, write: true},
+                fc1:         {ID: 0x0020, type: Zcl.DataType.CHAR_STR, read: true, write: true},
+                fc2:         {ID: 0x0021, type: Zcl.DataType.CHAR_STR, read: true, write: true},
+                fc3:         {ID: 0x0022, type: Zcl.DataType.CHAR_STR, read: true, write: true},
+                cal1:        {ID: 0x0030, type: Zcl.DataType.CHAR_STR, read: true, write: true},
+                cal2:        {ID: 0x0031, type: Zcl.DataType.CHAR_STR, read: true, write: true},
+                cal3:        {ID: 0x0032, type: Zcl.DataType.CHAR_STR, read: true, write: true},
+                cal4:        {ID: 0x0033, type: Zcl.DataType.CHAR_STR, read: true, write: true},
+                sns1:        {ID: 0x0040, type: Zcl.DataType.CHAR_STR, read: true, write: true},
+                sns2:        {ID: 0x0041, type: Zcl.DataType.CHAR_STR, read: true, write: true},
+                sns3:        {ID: 0x0042, type: Zcl.DataType.CHAR_STR, read: true, write: true},
+                sns4:        {ID: 0x0043, type: Zcl.DataType.CHAR_STR, read: true, write: true},
+                alertText:   {ID: 0x0050, type: Zcl.DataType.CHAR_STR, read: true, write: true},
+                alertActive: {ID: 0x0051, type: Zcl.DataType.BOOLEAN,  read: true, write: true},
             },
             commands: {
                 render: {ID: 0x00, parameters: []},
