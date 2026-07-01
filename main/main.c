@@ -28,6 +28,9 @@ static const epd_uc8179_pins_t k_pins = {
 #define BOOT_MAGIC 0xE5B00711u
 /* Retained across a soft reset (reboot) but random after a power cycle. */
 static RTC_NOINIT_ATTR uint32_t s_boot_magic;
+/* 1 while a panel refresh is in progress; if a reset lands here the panel is
+ * left mid-waveform (garbled), so the next boot must clear it. */
+static RTC_NOINIT_ATTR uint32_t s_render_active;
 
 static espink_display_t *s_disp;
 static TaskHandle_t s_render_task;
@@ -53,7 +56,9 @@ static void render_task(void *arg)
             memcpy(&snapshot, (const void *)s_pending_slots, sizeof(snapshot));
         }
         ESP_LOGI(TAG, "repaint");
+        s_render_active = 1; /* a reset before this clears leaves a garbled panel */
         esp_err_t err = espink_display_render(s_disp, &snapshot);
+        s_render_active = 0;
         if (err != ESP_OK) {
             ESP_LOGE(TAG, "render failed: %s", esp_err_to_name(err));
         }
@@ -74,13 +79,16 @@ void app_main(void)
     ESP_ERROR_CHECK(epd_uc8179_init(&k_pins, &epd));
     ESP_ERROR_CHECK(espink_display_create(epd, &s_disp));
 
-    /* Clear only on a true power-on, not on a reboot. E-paper retains its image
-     * without power, so skipping the clear on soft-resets means a crash/reboot
-     * leaves the last dashboard on screen instead of going blank. s_boot_magic
-     * survives a soft reset (RTC_NOINIT) but is random after power-on. */
-    if (s_boot_magic != BOOT_MAGIC) {
-        s_boot_magic = BOOT_MAGIC;
-        ESP_LOGI(TAG, "power-on: clearing panel");
+    /* Clear the panel on a true power-on, OR if a reset interrupted a refresh
+     * (which leaves the panel garbled). A clean reboot keeps the last dashboard
+     * on screen (e-paper retains its image), so a crash doesn't blank it.
+     * s_boot_magic survives a soft reset (RTC_NOINIT) but is random after power-on. */
+    bool power_on = (s_boot_magic != BOOT_MAGIC);
+    bool interrupted = (s_render_active != 0);
+    s_boot_magic = BOOT_MAGIC;
+    s_render_active = 0;
+    if (power_on || interrupted) {
+        ESP_LOGI(TAG, "clearing panel (%s)", power_on ? "power-on" : "interrupted render");
         epd_uc8179_clear(epd);
     } else {
         ESP_LOGI(TAG, "reboot: keeping last image");

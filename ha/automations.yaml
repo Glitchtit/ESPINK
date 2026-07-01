@@ -1,16 +1,17 @@
 # ESPINK — Home Assistant push automation (working reference).
 #
-# The robust way to drive the panel is ONE mqtt.publish to the Z2M device's
-# `set` topic with a JSON payload of slot values — no per-entity text.set_value
-# calls, so it doesn't depend on how HA named the entities. This is the exact
-# automation deployed on this system; adapt entity IDs / thresholds to yours.
+# Drives the panel by publishing slot values to the Z2M device's `set` topic.
+# IMPORTANT: send them in SMALL BATCHES with short delays, not all at once. A
+# single ~20-attribute burst overflowed the ESP32-C6's 802.15.4 RX buffer pool
+# and faulted the radio ISR; spreading the writes over a few seconds avoids it.
+# Refreshes every 15 min (each 3-colour e-paper refresh is ~26s).
 #
-# Slot value conventions (see main/display.c):
-#   now_label / fc*  : "icon:text" or "day:icon:HH/LL"; icon tokens = sun, cloud,
-#                      rain, storm, snow, fog, wind, partly, clear-night.
-#   now_hilo         : today's "HH/LL"; a high >= 25 renders red (also on fc*).
-#   headache         : 0-100 index -> firmware picks the severity icon.
-#   alert_active     : "1"/"0" -> red alert ribbon (with alert_text).
+# Slot conventions (see main/display.c):
+#   now_label / fc* : "icon:text" or "day:icon:HH/LL"; icons = sun, cloud, rain,
+#                     storm, snow, fog, wind, partly, clear-night.
+#   now_hilo        : today's "HH/LL"; a high >= 25 renders red (also on fc*).
+#   headache        : 0-100 index -> firmware picks the severity icon.
+#   Any tile ending in a Celsius temp >= 25 (now_value, sns*) renders red.
 
 automation:
   - alias: ESPINK dashboard push
@@ -18,8 +19,6 @@ automation:
     triggers:
       - trigger: time_pattern
         minutes: "/15"
-      - trigger: state
-        entity_id: sensor.headache_index
       - trigger: homeassistant
         event: start
     variables:
@@ -50,40 +49,40 @@ automation:
         response_variable: shoplist
       - variables:
           fdays: "{{ fc['weather.forecast_home'].forecast if (fc is defined and fc.get('weather.forecast_home')) else [] }}"
-          # First 5 items + "And X more items" when the list is longer than 6.
           shoplines: >-
             {% set names = (shoplist['todo.storage_shopping_list']['items'] | map(attribute='summary') | list) if (shoplist is defined and shoplist.get('todo.storage_shopping_list')) else [] %}
             {% set names = names | map('truncate', 42, true, '..', 0) | list %}
             {% set total = names | length %}
             {{ names if total <= 6 else names[:5] + ['And ' ~ (total - 5) ~ ' more items'] }}
+      # Build one "day:icon:HH/LL" forecast string for offset d (1..3).
       - variables:
-          # Build one "day:icon:HH/LL" forecast string for offset d (1..3).
-          payload: >-
-            {% macro fcstr(d) -%}
-            {%- if fdays | length > d -%}
-            {%- set x = fdays[d] -%}
-            {{ as_timestamp(x.datetime) | timestamp_custom('%a') }}:{{ cond_map.get(x.condition,'cloud') }}:{{ x.temperature | round }}/{{ x.get('templow', x.temperature) | round }}
-            {%- endif -%}
+          b1: >-
+            {{ {'hdr_left': now().strftime('%a %-d %b'),
+                'hdr_right': 'Updated ' ~ now().strftime('%H:%M'),
+                'now_value': (state_attr('weather.forecast_home','temperature') | round | string) ~ 'C',
+                'now_label': cond_map.get(states('weather.forecast_home'),'cloud') ~ ':' ~ (states('weather.forecast_home') | replace('-',' ') | title),
+                'now_hilo': ((fdays[0].temperature | round | string) ~ '/' ~ (fdays[0].get('templow', fdays[0].temperature) | round | string)) if fdays | length > 0 else ''} }}
+          b2: >-
+            {% macro fc(d) -%}
+            {%- if fdays | length > d -%}{%- set x = fdays[d] -%}{{ as_timestamp(x.datetime) | timestamp_custom('%a') }}:{{ cond_map.get(x.condition,'cloud') }}:{{ x.temperature | round }}/{{ x.get('templow', x.temperature) | round }}{%- endif -%}
             {%- endmacro -%}
-            {{ {
-              'hdr_left': now().strftime('%a %-d %b'),
-              'hdr_right': 'Updated ' ~ now().strftime('%H:%M'),
-              'now_value': (state_attr('weather.forecast_home','temperature') | round | string) ~ 'C',
-              'now_label': cond_map.get(states('weather.forecast_home'),'cloud') ~ ':' ~ (states('weather.forecast_home') | replace('-',' ') | title),
-              'now_hilo': ((fdays[0].temperature | round | string) ~ '/' ~ (fdays[0].get('templow', fdays[0].temperature) | round | string)) if fdays | length > 0 else '',
-              'fc1': fcstr(1), 'fc2': fcstr(2), 'fc3': fcstr(3),
-              'sns1': 'Living room: ' ~ (states('sensor.lroom_sensor_temperature') | float(0) | round(1) | string) ~ 'C',
-              'sns2': 'Humidity: ' ~ (states('sensor.lroom_sensor_humidity') | float(0) | round | string) ~ '%',
-              'sns3': '', 'sns4': '',
-              'headache': (states('sensor.headache_index') | float(0) | round | string),
-              'shop1': shoplines[0] if shoplines | length > 0 else '',
-              'shop2': shoplines[1] if shoplines | length > 1 else '',
-              'shop3': shoplines[2] if shoplines | length > 2 else '',
-              'shop4': shoplines[3] if shoplines | length > 3 else '',
-              'shop5': shoplines[4] if shoplines | length > 4 else '',
-              'shop6': shoplines[5] if shoplines | length > 5 else ''
-            } }}
-      - action: mqtt.publish
-        data:
-          topic: zigbee2mqtt/ESPINK/set
-          payload: "{{ payload | to_json }}"
+            {{ {'fc1': fc(1), 'fc2': fc(2), 'fc3': fc(3),
+                'sns1': 'Living room: ' ~ (states('sensor.lroom_sensor_temperature') | float(0) | round(1) | string) ~ 'C',
+                'sns2': 'Humidity: ' ~ (states('sensor.lroom_sensor_humidity') | float(0) | round | string) ~ '%'} }}
+          b3: >-
+            {{ {'sns3': '', 'sns4': '',
+                'headache': (states('sensor.headache_index') | float(0) | round | string),
+                'shop1': shoplines[0] if shoplines | length > 0 else '',
+                'shop2': shoplines[1] if shoplines | length > 1 else ''} }}
+          b4: >-
+            {{ {'shop3': shoplines[2] if shoplines | length > 2 else '',
+                'shop4': shoplines[3] if shoplines | length > 3 else '',
+                'shop5': shoplines[4] if shoplines | length > 4 else '',
+                'shop6': shoplines[5] if shoplines | length > 5 else ''} }}
+      - {action: mqtt.publish, data: {topic: zigbee2mqtt/ESPINK/set, payload: "{{ b1 | to_json }}"}}
+      - {delay: {milliseconds: 900}}
+      - {action: mqtt.publish, data: {topic: zigbee2mqtt/ESPINK/set, payload: "{{ b2 | to_json }}"}}
+      - {delay: {milliseconds: 900}}
+      - {action: mqtt.publish, data: {topic: zigbee2mqtt/ESPINK/set, payload: "{{ b3 | to_json }}"}}
+      - {delay: {milliseconds: 900}}
+      - {action: mqtt.publish, data: {topic: zigbee2mqtt/ESPINK/set, payload: "{{ b4 | to_json }}"}}
