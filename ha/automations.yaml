@@ -66,15 +66,15 @@ automation:
           b1: >-
             {{ {'hdr_left': hdr,
                 'hdr_right': 'Updated ' ~ now().strftime('%H:%M'),
-                'now_value': (state_attr('weather.forecast_home','temperature') | round | string) ~ 'C',
+                'now_value': (state_attr('weather.forecast_home','temperature') | round | string) ~ '°C',
                 'now_label': cond_map.get(states('weather.forecast_home'),'cloud') ~ ':' ~ (states('weather.forecast_home') | replace('-',' ') | title),
-                'now_hilo': ((fdays[0].temperature | round | string) ~ '/' ~ (fdays[0].get('templow', fdays[0].temperature) | round | string)) if fdays | length > 0 else ''} }}
+                'now_hilo': ((fdays[0].temperature | round | string) ~ '°/' ~ (fdays[0].get('templow', fdays[0].temperature) | round | string) ~ '°') if fdays | length > 0 else ''} }}
           b2: >-
             {% macro fc(d) -%}
-            {%- if fdays | length > d -%}{%- set x = fdays[d] -%}{{ as_timestamp(x.datetime) | timestamp_custom('%a') }}:{{ cond_map.get(x.condition,'cloud') }}:{{ x.temperature | round }}/{{ x.get('templow', x.temperature) | round }}{%- endif -%}
+            {%- if fdays | length > d -%}{%- set x = fdays[d] -%}{{ as_timestamp(x.datetime) | timestamp_custom('%a') }}:{{ cond_map.get(x.condition,'cloud') }}:{{ x.temperature | round }}°/{{ x.get('templow', x.temperature) | round }}°{%- endif -%}
             {%- endmacro -%}
             {{ {'fc1': fc(1), 'fc2': fc(2), 'fc3': fc(3),
-                'sns1': 'Living room: ' ~ (states('sensor.lroom_sensor_temperature') | float(0) | round(1) | string) ~ 'C',
+                'sns1': 'Living room: ' ~ (states('sensor.lroom_sensor_temperature') | float(0) | round(1) | string) ~ '°C',
                 'sns2': 'Humidity: ' ~ (states('sensor.lroom_sensor_humidity') | float(0) | round | string) ~ '%'} }}
           b3: >-
             {{ {'sns3': '', 'sns4': '',

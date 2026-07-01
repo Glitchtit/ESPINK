@@ -287,7 +287,7 @@ static void draw_headache_panel(u8g2_t *u8g2, const espink_slots_t *s)
     draw_panel_frame(u8g2, PR_X, PT_Y, PR_W, PT_H);
     int hv = headache_value(s);
     u8g2_SetFont(u8g2, u8g2_font_helvB18_tf);
-    u8g2_DrawUTF8(u8g2, HDC_TEXT_X, 96, "HEADACHE");
+    u8g2_DrawUTF8(u8g2, HDC_TEXT_X, 108, "HEADACHE RISK");
     if (hv < 0) {
         return;
     }
@@ -296,17 +296,11 @@ static void draw_headache_panel(u8g2_t *u8g2, const espink_slots_t *s)
         u8g2_DrawXBM(u8g2, HDC_ICON_X, HDC_ICON_Y, HEADACHE_ICON_W,
                      HEADACHE_ICON_H, headache_icons[lvl - 1]);
     }
-    u8g2_SetFont(u8g2, u8g2_font_helvR14_tf);
-    u8g2_DrawUTF8(u8g2, HDC_TEXT_X, 136, "STATUS:");
-    u8g2_SetFont(u8g2, u8g2_font_helvB14_tf);
-    u8g2_DrawUTF8(u8g2, HDC_TEXT_X + 74, 136, k_headache_words[lvl - 1]);
-    u8g2_SetFont(u8g2, u8g2_font_helvR14_tf);
-    u8g2_DrawUTF8(u8g2, HDC_TEXT_X, 170, "INTENSITY:");
-    char buf[16];
-    snprintf(buf, sizeof(buf), "%d%%", hv);
-    u8g2_SetFont(u8g2, u8g2_font_helvB14_tf);
-    u8g2_DrawUTF8(u8g2, HDC_TEXT_X + 96, 170, buf);
-    u8g2_DrawCircle(u8g2, HDC_TEXT_X + 176, 165, 11, U8G2_DRAW_ALL);
+    /* Level word + the risk percentage, e.g. "Low (14%)". */
+    char buf[24];
+    snprintf(buf, sizeof(buf), "%s (%d%%)", k_headache_words[lvl - 1], hv);
+    u8g2_SetFont(u8g2, u8g2_font_helvB18_tf);
+    u8g2_DrawUTF8(u8g2, HDC_TEXT_X, 154, buf);
 }
 
 static void draw_living_agenda_panel(u8g2_t *u8g2, const espink_slots_t *s)
@@ -315,8 +309,8 @@ static void draw_living_agenda_panel(u8g2_t *u8g2, const espink_slots_t *s)
     draw_house(u8g2, 40, 286);
     u8g2_SetFont(u8g2, u8g2_font_helvB14_tf);
     u8g2_DrawUTF8(u8g2, 18, LR_TITLE_BASE, "LIVING ROOM");
-    draw_temp_text(u8g2, 18, LR_L1_BASE, u8g2_font_helvR14_tf, GET(s, ESPINK_ATTR_SNS1), false);
-    u8g2_SetFont(u8g2, u8g2_font_helvR14_tf);
+    draw_temp_text(u8g2, 18, LR_L1_BASE, u8g2_font_helvR12_tf, GET(s, ESPINK_ATTR_SNS1), false);
+    u8g2_SetFont(u8g2, u8g2_font_helvR12_tf);
     u8g2_DrawUTF8(u8g2, 18, LR_L2_BASE, GET(s, ESPINK_ATTR_SNS2));
 
     u8g2_DrawVLine(u8g2, 150, PB_Y + 12, PB_H - 24);
@@ -359,14 +353,7 @@ static void draw_shopping_panel(u8g2_t *u8g2, const espink_slots_t *s)
 
 static void draw_footer(u8g2_t *u8g2)
 {
-    /* carousel dots (decorative, single page) */
-    u8g2_DrawBox(u8g2, 372, 465, 12, 4);
-    for (int i = 1; i < 4; i++) {
-        u8g2_DrawDisc(u8g2, 392 + (i - 1) * 16, 467, 2, U8G2_DRAW_ALL);
-    }
-    u8g2_SetFont(u8g2, u8g2_font_helvR14_tf);
-    const char *v = "DASHBOARD V2.0";
-    u8g2_DrawUTF8(u8g2, 762 - u8g2_GetUTF8Width(u8g2, v), 472, v);
+    /* Battery indicator (bottom-right); becomes real in Phase 2. */
     u8g2_DrawFrame(u8g2, 768, 461, 22, 12);      /* battery body */
     u8g2_DrawBox(u8g2, 790, 464, 3, 6);          /* battery nub */
     u8g2_DrawBox(u8g2, 770, 463, 16, 8);         /* charge level */
@@ -398,7 +385,7 @@ static void draw_red_pass(u8g2_t *u8g2, const espink_slots_t *s)
     /* Hot current temperatures: hero value + the living-room tile. */
     draw_temp_text(u8g2, NOW_VAL_X, NOW_VAL_BASE, u8g2_font_fub30_tf,
                    GET(s, ESPINK_ATTR_NOW_VALUE), true);
-    draw_temp_text(u8g2, 18, LR_L1_BASE, u8g2_font_helvR14_tf, GET(s, ESPINK_ATTR_SNS1), true);
+    draw_temp_text(u8g2, 18, LR_L1_BASE, u8g2_font_helvR12_tf, GET(s, ESPINK_ATTR_SNS1), true);
 
     /* Hot highs: today + forecast columns. */
     draw_hilo(u8g2, NOW_HILO_X, NOW_HILO_BASE, u8g2_font_helvR14_tf,
