@@ -13,7 +13,15 @@ static const char *TAG = "zigbee";
 
 #define ESPINK_ENDPOINT      10
 #define ESPINK_CLUSTER_ID    0xFC00
-#define COALESCE_US          (2 * 1000 * 1000)   /* 2 s debounce */
+/* Quiet-window debounce before repainting. A dashboard push arrives as ~25
+ * separate attribute writes spread over several seconds (5 batches, 900 ms
+ * apart, plus delivery jitter). The refresh is a ~26 s full 3-colour cycle
+ * during which the render task hogs the device and inbound writes get delayed
+ * and dropped by Z2M ("did not respond"). So the debounce MUST outlast the
+ * whole push: if it fires mid-delivery, the refresh starts on partial data and
+ * blocks reception of the rest. 10 s > total push time, so the panel repaints
+ * exactly once, after every slot has landed. Re-armed on every write. */
+#define COALESCE_US          (10 * 1000 * 1000)  /* 10 s quiet window */
 #define ESPINK_ZB_STACK      6144
 
 /* Slot attribute IDs and ZCL types, mirroring main/slots.h + the Z2M converter. */

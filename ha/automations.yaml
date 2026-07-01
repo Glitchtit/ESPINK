@@ -4,6 +4,10 @@
 # IMPORTANT: send them in SMALL BATCHES with short delays, not all at once. A
 # single ~20-attribute burst overflowed the ESP32-C6's 802.15.4 RX buffer pool
 # and faulted the radio ISR; spreading the writes over a few seconds avoids it.
+# The firmware coalesces writes with a 10 s quiet window (see zigbee.c
+# COALESCE_US): it only repaints once no slot has changed for 10 s, so the whole
+# push (5 batches x 900 ms + jitter) must land BEFORE that window elapses — the
+# ~26 s refresh then runs once, on complete data, without blocking reception.
 # Refreshes every 15 min (each 3-colour e-paper refresh is ~26s).
 #
 # Slot conventions (see main/display.c):
