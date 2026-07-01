@@ -49,6 +49,13 @@ automation:
         target: {entity_id: todo.storage_shopping_list}
         data: {status: needs_action}
         response_variable: shoplist
+      - action: calendar.get_events
+        target:
+          entity_id: [calendar.thomas, calendar.chores, calendar.anniins, calendar.prakticum]
+        data:
+          start_date_time: "{{ today_at('00:00').isoformat() }}"
+          end_date_time: "{{ (today_at('00:00') + timedelta(days=1)).isoformat() }}"
+        response_variable: cal
       - variables:
           fdays: "{{ fc['weather.forecast_home'].forecast if (fc is defined and fc.get('weather.forecast_home')) else [] }}"
           shoplines: >-
@@ -56,6 +63,17 @@ automation:
             {% set names = names | map('truncate', 42, true, '..', 0) | list %}
             {% set total = names | length %}
             {{ names if total <= 6 else names[:5] + ['And ' ~ (total - 5) ~ ' more items'] }}
+          # DAILY AGENDA: merge today's events from several calendars, sort by
+          # start, strip emoji (keep latin-1 so Finnish äöå survive), dedup, and
+          # prefix timed events with HH:MM (all-day events show the title only).
+          callines: >-
+            {% set cals = ['calendar.thomas','calendar.chores','calendar.anniins','calendar.prakticum'] %}
+            {% set ns = namespace(items=[]) %}
+            {% for c in cals %}{% set ns.items = ns.items + (cal[c]['events'] if (cal is defined and cal.get(c)) else []) %}{% endfor %}
+            {% set ev = ns.items | sort(attribute='start') %}
+            {% set ns2 = namespace(lines=[]) %}
+            {% for e in ev %}{% set summ = (e.summary | regex_replace('[^\x00-\xff]+','') | trim) %}{% set t = (as_timestamp(e.start) | timestamp_custom('%H:%M') ~ ' ') if 'T' in (e.start | string) else '' %}{% set ns2.lines = ns2.lines + [(t ~ summ) | truncate(30, true, '..', 0)] %}{% endfor %}
+            {{ (ns2.lines | unique | list)[:4] }}
           # Header: red (leading '~' = RED_MARK) on holidays (Holiday integration
           # calendar 'on') and Sundays; append the holiday name on holidays.
           hdr: >-
@@ -88,6 +106,11 @@ automation:
                 'shop4': shoplines[3] if shoplines | length > 3 else '',
                 'shop5': shoplines[4] if shoplines | length > 4 else '',
                 'shop6': shoplines[5] if shoplines | length > 5 else ''} }}
+          b5: >-
+            {{ {'cal1': callines[0] if callines | length > 0 else '',
+                'cal2': callines[1] if callines | length > 1 else '',
+                'cal3': callines[2] if callines | length > 2 else '',
+                'cal4': callines[3] if callines | length > 3 else ''} }}
       - {action: mqtt.publish, data: {topic: zigbee2mqtt/ESPINK/set, payload: "{{ b1 | to_json }}"}}
       - {delay: {milliseconds: 900}}
       - {action: mqtt.publish, data: {topic: zigbee2mqtt/ESPINK/set, payload: "{{ b2 | to_json }}"}}
@@ -95,3 +118,5 @@ automation:
       - {action: mqtt.publish, data: {topic: zigbee2mqtt/ESPINK/set, payload: "{{ b3 | to_json }}"}}
       - {delay: {milliseconds: 900}}
       - {action: mqtt.publish, data: {topic: zigbee2mqtt/ESPINK/set, payload: "{{ b4 | to_json }}"}}
+      - {delay: {milliseconds: 900}}
+      - {action: mqtt.publish, data: {topic: zigbee2mqtt/ESPINK/set, payload: "{{ b5 | to_json }}"}}
