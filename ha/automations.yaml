@@ -45,6 +45,11 @@ script:
       - action: text.set_value
         target: {entity_id: text.espink_7in5b_sns2}
         data: {value: "Humidity: {{ states('sensor.living_room_humidity') }}%"}
+      # Headache index 0-100 -> firmware picks the matching severity icon
+      # (<20 Low, <40 Slight, <60 Moderate, <80 High, else Severe).
+      - action: text.set_value
+        target: {entity_id: text.espink_headache}
+        data: {value: "{{ states('sensor.headache_index') | float(0) | round }}"}
       # ... repeat for fc1..fc3, cal1..cal4, sns3/sns4 as needed ...
       - if: "{{ is_state('binary_sensor.weather_warning','on') }}"
         then:

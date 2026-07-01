@@ -34,10 +34,11 @@ enum {
     ESPINK_ATTR_SNS4        = 0x0043,
     ESPINK_ATTR_ALERT_TEXT  = 0x0050, /* red alert ribbon text */
     ESPINK_ATTR_ALERT_ACTIVE= 0x0051, /* "0"/"1": drives the red plane */
+    ESPINK_ATTR_HEADACHE    = 0x0070, /* headache index 0-100 (as string) */
 };
 
 /* Number of addressable slots (must match the table in slots.c). */
-#define ESPINK_SLOT_COUNT 17
+#define ESPINK_SLOT_COUNT 18
 
 typedef struct {
     char value[ESPINK_SLOT_COUNT][ESPINK_SLOT_MAXLEN + 1];
@@ -68,5 +69,10 @@ void espink_split_icon(const char *value, char *token_out, size_t token_sz,
 /* True once `debounce_us` has elapsed since the last dirtying write — i.e. the
  * coalescing window has closed and it is time to repaint. */
 bool espink_coalesce_due(int64_t last_dirty_us, int64_t now_us, int64_t debounce_us);
+
+/* Map a headache index (0-100) to a severity level 1..5 (matching the HA card
+ * bands: <20 Low, <40 Slight, <60 Moderate, <80 High, else Severe). Values are
+ * clamped, so out-of-range input still yields 1..5. */
+int espink_headache_level(int value);
 
 #endif /* ESPINK_SLOTS_H */

@@ -6,6 +6,7 @@
  * does a single full refresh. */
 #include "display.h"
 
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include "esp_log.h"
@@ -13,6 +14,7 @@
 #include "u8g2.h"
 #include "u8g2_espink.h"
 #include "render_fb.h"
+#include "headache_icons.h"
 
 static const char *TAG = "display";
 
@@ -34,6 +36,21 @@ static const char *TAG = "display";
 #define SNS_TOP     380
 #define SNS_ROW_H   26
 #define ALERT_BASE  462
+/* Headache indicator: icon + text in the right-half band under the forecast. */
+#define HDC_ICON_X  438
+#define HDC_ICON_Y  196
+#define HDC_TEXT_X  520
+
+static const char *const k_headache_words[5] = {
+    "Low", "Slight", "Moderate", "High", "Severe",
+};
+
+/* Headache index (0-100) from the slot, or -1 if the slot is empty. */
+static int headache_value(const espink_slots_t *s)
+{
+    const char *v = espink_slots_get(s, espink_slot_index_for_attr(ESPINK_ATTR_HEADACHE));
+    return v[0] == '\0' ? -1 : atoi(v);
+}
 
 struct espink_display {
     epd_uc8179_dev_t *epd;
@@ -128,6 +145,25 @@ static void draw_black_pass(u8g2_t *u8g2, const espink_slots_t *s)
         u8g2_DrawUTF8(u8g2, x, FC_BASE + FC_ROW_H + 8, hilo);
     }
 
+    /* Headache indicator (right half, under the forecast). Text + level 1-4 icon
+     * render in black; the Severe (level 5) icon renders red in draw_red_pass. */
+    int hv = headache_value(s);
+    if (hv >= 0) {
+        int lvl = espink_headache_level(hv);
+        u8g2_SetFont(u8g2, u8g2_font_helvR14_tf);
+        u8g2_DrawUTF8(u8g2, HDC_TEXT_X, HDC_ICON_Y + 22, "Headache");
+        u8g2_SetFont(u8g2, u8g2_font_helvB18_tf);
+        u8g2_DrawUTF8(u8g2, HDC_TEXT_X, HDC_ICON_Y + 50, k_headache_words[lvl - 1]);
+        char buf[16];
+        snprintf(buf, sizeof(buf), "%d%%", hv);
+        u8g2_SetFont(u8g2, u8g2_font_helvR14_tf);
+        u8g2_DrawUTF8(u8g2, HDC_TEXT_X, HDC_ICON_Y + 72, buf);
+        if (lvl < 5) {
+            u8g2_DrawXBM(u8g2, HDC_ICON_X, HDC_ICON_Y, HEADACHE_ICON_W,
+                         HEADACHE_ICON_H, headache_icons[lvl - 1]);
+        }
+    }
+
     /* Calendar / agenda lines. */
     u8g2_SetFont(u8g2, u8g2_font_helvR14_tf);
     const uint16_t cal[] = {ESPINK_ATTR_CAL1, ESPINK_ATTR_CAL2,
@@ -158,6 +194,17 @@ static void draw_red_pass(u8g2_t *u8g2, const espink_slots_t *s)
     u8g2_DrawUTF8(u8g2, M + 16, ALERT_BASE, GET(s, ESPINK_ATTR_ALERT_TEXT));
 }
 
+/* The Severe headache icon is drawn red for emphasis (all other levels are
+ * black, drawn in draw_black_pass). */
+static void draw_headache_red(u8g2_t *u8g2, const espink_slots_t *s)
+{
+    int hv = headache_value(s);
+    if (hv >= 0 && espink_headache_level(hv) == 5) {
+        u8g2_DrawXBM(u8g2, HDC_ICON_X, HDC_ICON_Y, HEADACHE_ICON_W,
+                     HEADACHE_ICON_H, headache_icons[4]);
+    }
+}
+
 esp_err_t espink_display_create(epd_uc8179_dev_t *epd, espink_display_t **out)
 {
     espink_display_t *d = calloc(1, sizeof(*d));
@@ -185,6 +232,7 @@ esp_err_t espink_display_render(espink_display_t *d, const espink_slots_t *slots
 
     u8g2_ClearBuffer(&d->u8g2);
     draw_red_pass(&d->u8g2, slots);
+    draw_headache_red(&d->u8g2, slots);
     espink_u8g2_to_plane(d->u8g2buf, d->red);
 
     ESP_LOGI(TAG, "rendering frame (full refresh)");

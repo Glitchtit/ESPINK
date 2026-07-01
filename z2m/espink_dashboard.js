@@ -65,6 +65,7 @@ const definition = {
                 sns4:        {ID: 0x0043, type: Zcl.DataType.CHAR_STR, read: true, write: true},
                 alertText:   {ID: 0x0050, type: Zcl.DataType.CHAR_STR, read: true, write: true},
                 alertActive: {ID: 0x0051, type: Zcl.DataType.BOOLEAN,  read: true, write: true},
+                headache:    {ID: 0x0070, type: Zcl.DataType.CHAR_STR, read: true, write: true},
             },
             commands: {
                 render: {ID: 0x00, parameters: []},
@@ -87,6 +88,7 @@ const definition = {
         slot('sns3', 'sns3', 'Sensor tile 3'),
         slot('sns4', 'sns4', 'Sensor tile 4'),
         slot('alert_text', 'alertText', 'Red alert ribbon text'),
+        slot('headache', 'headache', 'Headache index 0-100 (drives the severity icon)'),
         m.binary({name: 'alert_active', cluster: CLUSTER, attribute: 'alertActive',
                   valueOn: ['ON', 1], valueOff: ['OFF', 0], access: 'ALL',
                   description: 'Show the red alert ribbon', zigbeeCommandOptions: opts,

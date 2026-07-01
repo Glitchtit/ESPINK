@@ -88,5 +88,14 @@ components/
   u8g2/          U8g2 RAM-only 800x480 backend + vendored upstream
 z2m/             Zigbee2MQTT external converter
 ha/              Home Assistant script + automation examples
+assets/headache/ source PNGs + mkicons.py that generate main/headache_icons.h
 test/host/       host-compiled unit tests (pure logic)
 ```
+
+### Headache indicator
+
+The `headache` slot takes a 0–100 index (`sensor.headache_index`); the firmware
+picks a 1-bit severity icon (Low/Slight/Moderate/High/Severe — Severe drawn red)
+shown under the forecast. Regenerate the icons from new art with
+`python assets/headache/mkicons.py` (needs Pillow), which rewrites
+`main/headache_icons.h`.

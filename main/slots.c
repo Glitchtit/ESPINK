@@ -22,6 +22,7 @@ static const uint16_t k_attr_table[ESPINK_SLOT_COUNT] = {
     ESPINK_ATTR_SNS4,
     ESPINK_ATTR_ALERT_TEXT,
     ESPINK_ATTR_ALERT_ACTIVE,
+    ESPINK_ATTR_HEADACHE,
 };
 
 /* Icon keywords recognised as a "icon:" prefix by espink_split_icon. These map
@@ -111,4 +112,13 @@ void espink_split_icon(const char *value, char *token_out, size_t token_sz,
 bool espink_coalesce_due(int64_t last_dirty_us, int64_t now_us, int64_t debounce_us)
 {
     return (now_us - last_dirty_us) >= debounce_us;
+}
+
+int espink_headache_level(int value)
+{
+    if (value < 20) return 1;
+    if (value < 40) return 2;
+    if (value < 60) return 3;
+    if (value < 80) return 4;
+    return 5;
 }

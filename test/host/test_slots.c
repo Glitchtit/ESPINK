@@ -112,8 +112,24 @@ static void test_coalesce_due(void) {
           "due well after debounce");
 }
 
+static void test_headache_level(void) {
+    printf("test_headache_level\n");
+    CHECK(espink_headache_level(0) == 1, "0 -> Low(1)");
+    CHECK(espink_headache_level(9) == 1, "9 -> Low(1)");
+    CHECK(espink_headache_level(19) == 1, "19 -> Low(1)");
+    CHECK(espink_headache_level(20) == 2, "20 -> Slight(2)");
+    CHECK(espink_headache_level(39) == 2, "39 -> Slight(2)");
+    CHECK(espink_headache_level(40) == 3, "40 -> Moderate(3)");
+    CHECK(espink_headache_level(60) == 4, "60 -> High(4)");
+    CHECK(espink_headache_level(80) == 5, "80 -> Severe(5)");
+    CHECK(espink_headache_level(100) == 5, "100 -> Severe(5)");
+    CHECK(espink_headache_level(-5) == 1, "negative clamps to Low(1)");
+    CHECK(espink_headache_level(999) == 5, "over-range clamps to Severe(5)");
+}
+
 int main(void) {
     test_attr_index_mapping();
+    test_headache_level();
     test_set_and_get();
     test_set_unknown_attr();
     test_set_truncates_overlong();

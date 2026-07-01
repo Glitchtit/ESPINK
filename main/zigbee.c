@@ -40,6 +40,7 @@ static const zb_attr_def_t k_zb_attrs[] = {
     {ESPINK_ATTR_SNS4,         ESP_ZB_ZCL_ATTR_TYPE_CHAR_STRING},
     {ESPINK_ATTR_ALERT_TEXT,   ESP_ZB_ZCL_ATTR_TYPE_CHAR_STRING},
     {ESPINK_ATTR_ALERT_ACTIVE, ESP_ZB_ZCL_ATTR_TYPE_BOOL},
+    {ESPINK_ATTR_HEADACHE,     ESP_ZB_ZCL_ATTR_TYPE_CHAR_STRING},
 };
 #define N_ZB_ATTRS (sizeof(k_zb_attrs) / sizeof(k_zb_attrs[0]))
 
