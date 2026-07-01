@@ -25,6 +25,12 @@ static const uint16_t k_attr_table[ESPINK_SLOT_COUNT] = {
     ESPINK_ATTR_ALERT_TEXT,
     ESPINK_ATTR_ALERT_ACTIVE,
     ESPINK_ATTR_HEADACHE,
+    ESPINK_ATTR_SHOP1,
+    ESPINK_ATTR_SHOP2,
+    ESPINK_ATTR_SHOP3,
+    ESPINK_ATTR_SHOP4,
+    ESPINK_ATTR_SHOP5,
+    ESPINK_ATTR_SHOP6,
 };
 
 /* Icon keywords recognised as a "icon:" prefix by espink_split_icon. These map

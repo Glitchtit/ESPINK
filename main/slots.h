@@ -36,10 +36,16 @@ enum {
     ESPINK_ATTR_ALERT_TEXT  = 0x0050, /* red alert ribbon text */
     ESPINK_ATTR_ALERT_ACTIVE= 0x0051, /* "0"/"1": drives the red plane */
     ESPINK_ATTR_HEADACHE    = 0x0070, /* headache index 0-100 (as string) */
+    ESPINK_ATTR_SHOP1       = 0x0080, /* shopping list line 1 */
+    ESPINK_ATTR_SHOP2       = 0x0081,
+    ESPINK_ATTR_SHOP3       = 0x0082,
+    ESPINK_ATTR_SHOP4       = 0x0083,
+    ESPINK_ATTR_SHOP5       = 0x0084,
+    ESPINK_ATTR_SHOP6       = 0x0085, /* last line; "And X more items" if truncated */
 };
 
 /* Number of addressable slots (must match the table in slots.c). */
-#define ESPINK_SLOT_COUNT 19
+#define ESPINK_SLOT_COUNT 25
 
 typedef struct {
     char value[ESPINK_SLOT_COUNT][ESPINK_SLOT_MAXLEN + 1];

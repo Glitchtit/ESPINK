@@ -18,28 +18,48 @@
 
 static const char *TAG = "display";
 
-/* Layout constants (pixels). */
-#define M           12   /* outer margin */
-#define HDR_BASE    30
-#define RULE_Y      44
+/* Layout constants (pixels). Two columns: left = now / sensors / agenda,
+ * right = forecast / headache / shopping. */
+#define M           12    /* outer margin */
+#define COL_R       410   /* right column x */
+#define HDR_BASE    28
+#define RULE_Y      40
+
+/* LEFT: now */
 #define NOW_VAL_X   M
-#define NOW_VAL_BASE 150
-#define NOW_ICON_X  220
-#define NOW_ICON_BASE 150
-#define NOW_LBL_BASE 210
-#define FC_X        430
-#define FC_COL_W    120
-#define FC_BASE     110
-#define FC_ROW_H    60
-#define CAL_BASE    300
-#define CAL_ROW_H   30
-#define SNS_TOP     380
+#define NOW_VAL_BASE 92
+#define NOW_HILO_BASE 118
+#define NOW_ICON_X  250
+#define NOW_ICON_BASE 100
+#define NOW_LBL_BASE 146
+
+/* LEFT: sensors (vertical stack) */
+#define SNS_X       M
+#define SNS_TOP     192
 #define SNS_ROW_H   26
-#define ALERT_BASE  462
-/* Headache indicator: icon + text in the right-half band under the forecast. */
-#define HDC_ICON_X  438
-#define HDC_ICON_Y  196
-#define HDC_TEXT_X  520
+
+/* LEFT: agenda */
+#define CAL_TITLE_BASE 260
+#define CAL_BASE    286
+#define CAL_ROW_H   26
+
+/* RIGHT: forecast */
+#define FC_X        COL_R
+#define FC_COL_W    126
+#define FC_BASE     72
+#define FC_ROW_H    56
+
+/* RIGHT: headache */
+#define HDC_ICON_X  COL_R
+#define HDC_ICON_Y  164
+#define HDC_TEXT_X  (COL_R + 84)
+
+/* RIGHT: shopping */
+#define SHOP_TITLE_BASE 260
+#define SHOP_BASE   286
+#define SHOP_ROW_H  25
+
+#define ALERT_BASE  474
 
 static const char *const k_headache_words[5] = {
     "Low", "Slight", "Moderate", "High", "Severe",
@@ -84,7 +104,13 @@ static uint8_t icon_glyph(const char *token)
 
 /* A high >= this renders red. */
 #define RED_HI_THRESHOLD 25
-#define NOW_HILO_BASE   184   /* today's hi/lo, under the big value */
+
+/* Sensor tile i position (vertical stack, left column). */
+static void sns_xy(int i, int *x, int *y)
+{
+    *x = SNS_X;
+    *y = SNS_TOP + i * SNS_ROW_H;
+}
 
 /* Draw a "HH/LL" hi/lo string. The high renders red (in the red pass) when it is
  * >= RED_HI_THRESHOLD; the low and separator are always black. Both passes lay
@@ -236,7 +262,18 @@ static void draw_black_pass(u8g2_t *u8g2, const espink_slots_t *s)
         }
     }
 
-    /* Calendar / agenda lines. */
+    /* Sensors (left column, vertical stack; a temperature tile >= 25 is red). */
+    const uint16_t sns[] = {ESPINK_ATTR_SNS1, ESPINK_ATTR_SNS2,
+                            ESPINK_ATTR_SNS3, ESPINK_ATTR_SNS4};
+    for (int i = 0; i < 4; i++) {
+        int x, y;
+        sns_xy(i, &x, &y);
+        draw_temp_text(u8g2, x, y, u8g2_font_helvR14_tf, GET(s, sns[i]), false);
+    }
+
+    /* Agenda (left column, under the sensors). */
+    u8g2_SetFont(u8g2, u8g2_font_helvB14_tf);
+    u8g2_DrawUTF8(u8g2, M, CAL_TITLE_BASE, "Agenda");
     u8g2_SetFont(u8g2, u8g2_font_helvR14_tf);
     const uint16_t cal[] = {ESPINK_ATTR_CAL1, ESPINK_ATTR_CAL2,
                             ESPINK_ATTR_CAL3, ESPINK_ATTR_CAL4};
@@ -244,13 +281,17 @@ static void draw_black_pass(u8g2_t *u8g2, const espink_slots_t *s)
         u8g2_DrawUTF8(u8g2, M, CAL_BASE + i * CAL_ROW_H, GET(s, cal[i]));
     }
 
-    /* Sensor tiles (two columns; a tile that is a temperature >= 25 is red). */
-    const uint16_t sns[] = {ESPINK_ATTR_SNS1, ESPINK_ATTR_SNS2,
-                            ESPINK_ATTR_SNS3, ESPINK_ATTR_SNS4};
-    for (int i = 0; i < 4; i++) {
-        int x = M + (i % 2) * (ESPINK_FB_WIDTH / 2);
-        int y = SNS_TOP + (i / 2) * SNS_ROW_H;
-        draw_temp_text(u8g2, x, y, u8g2_font_6x13_tf, GET(s, sns[i]), false);
+    /* Shopping list (right column, under the headache). */
+    u8g2_SetFont(u8g2, u8g2_font_helvB14_tf);
+    u8g2_DrawUTF8(u8g2, COL_R, SHOP_TITLE_BASE, "Shopping");
+    u8g2_SetFont(u8g2, u8g2_font_helvR14_tf);
+    const uint16_t shop[] = {ESPINK_ATTR_SHOP1, ESPINK_ATTR_SHOP2, ESPINK_ATTR_SHOP3,
+                             ESPINK_ATTR_SHOP4, ESPINK_ATTR_SHOP5, ESPINK_ATTR_SHOP6};
+    for (int i = 0; i < 6; i++) {
+        const char *item = GET(s, shop[i]);
+        if (item[0] != '\0') {
+            u8g2_DrawUTF8(u8g2, COL_R, SHOP_BASE + i * SHOP_ROW_H, item);
+        }
     }
 }
 
@@ -274,9 +315,9 @@ static void draw_temps_red(u8g2_t *u8g2, const espink_slots_t *s)
     const uint16_t sns[] = {ESPINK_ATTR_SNS1, ESPINK_ATTR_SNS2,
                             ESPINK_ATTR_SNS3, ESPINK_ATTR_SNS4};
     for (int i = 0; i < 4; i++) {
-        int x = M + (i % 2) * (ESPINK_FB_WIDTH / 2);
-        int y = SNS_TOP + (i / 2) * SNS_ROW_H;
-        draw_temp_text(u8g2, x, y, u8g2_font_6x13_tf, GET(s, sns[i]), true);
+        int x, y;
+        sns_xy(i, &x, &y);
+        draw_temp_text(u8g2, x, y, u8g2_font_helvR14_tf, GET(s, sns[i]), true);
     }
 }
 
