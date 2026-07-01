@@ -1,87 +1,73 @@
-# ESPINK — Home Assistant examples (adapt entity IDs to your setup).
+# ESPINK — Home Assistant push automation (working reference).
 #
-# The Z2M converter exposes one writable entity per slot, e.g.
-#   text.espink_7in5b_hdr_left, text.espink_7in5b_now_value, ...
-#   switch.espink_7in5b_alert_active
-# Confirm the exact IDs under Settings -> Devices -> ESPINK-7in5b.
+# The robust way to drive the panel is ONE mqtt.publish to the Z2M device's
+# `set` topic with a JSON payload of slot values — no per-entity text.set_value
+# calls, so it doesn't depend on how HA named the entities. This is the exact
+# automation deployed on this system; adapt entity IDs / thresholds to yours.
 #
-# Keep every value <= 60 chars (one Zigbee write, no fragmentation). The icon
-# convention for now_label / forecast tokens (sun, cloud, rain, storm, snow,
-# fog, wind, partly, clear-night) matches main/display.c::icon_glyph.
+# Slot value conventions (see main/display.c):
+#   now_label / fc*  : "icon:text" or "day:icon:HH/LL"; icon tokens = sun, cloud,
+#                      rain, storm, snow, fog, wind, partly, clear-night.
+#   now_hilo         : today's "HH/LL"; a high >= 25 renders red (also on fc*).
+#   headache         : 0-100 index -> firmware picks the severity icon.
+#   alert_active     : "1"/"0" -> red alert ribbon (with alert_text).
 
-# ---------------------------------------------------------------------------
-# Reusable script: compute all slot values and push them to the device.
-# ---------------------------------------------------------------------------
-script:
-  espink_push_dashboard:
-    alias: ESPINK push dashboard
-    sequence:
-      - variables:
-          w: weather.home                       # your weather entity
-          cal: calendar.personal                # your calendar entity
-      - action: text.set_value
-        target: {entity_id: text.espink_7in5b_hdr_left}
-        data: {value: "{{ now().strftime('%a %-d %b') }}"}
-      - action: text.set_value
-        target: {entity_id: text.espink_7in5b_hdr_right}
-        data: {value: "Updated {{ now().strftime('%H:%M') }}"}
-      - action: text.set_value
-        target: {entity_id: text.espink_7in5b_now_value}
-        data: {value: "{{ state_attr(w,'temperature') | round(0) }}°"}
-      - action: text.set_value
-        target: {entity_id: text.espink_7in5b_now_label}
-        # map HA condition -> "icon:Text"; trim to 60 chars
-        data:
-          value: >-
-            {% set c = states(w) %}
-            {% set icon = {'sunny':'sun','clear-night':'clear-night',
-              'partlycloudy':'partly','cloudy':'cloud','rainy':'rain',
-              'pouring':'rain','lightning':'storm','snowy':'snow',
-              'fog':'fog','windy':'wind'}.get(c,'cloud') %}
-            {{ (icon ~ ':' ~ c | replace('-',' ') | title)[:60] }}
-      - action: text.set_value
-        target: {entity_id: text.espink_7in5b_sns1}
-        data: {value: "Indoor: {{ states('sensor.living_room_temperature') }}°C"}
-      - action: text.set_value
-        target: {entity_id: text.espink_7in5b_sns2}
-        data: {value: "Humidity: {{ states('sensor.living_room_humidity') }}%"}
-      # Headache index 0-100 -> firmware picks the matching severity icon
-      # (<20 Low, <40 Slight, <60 Moderate, <80 High, else Severe).
-      - action: text.set_value
-        target: {entity_id: text.espink_headache}
-        data: {value: "{{ states('sensor.headache_index') | float(0) | round }}"}
-      # ... repeat for fc1..fc3, cal1..cal4, sns3/sns4 as needed ...
-      - if: "{{ is_state('binary_sensor.weather_warning','on') }}"
-        then:
-          - action: switch.turn_on
-            target: {entity_id: switch.espink_7in5b_alert_active}
-        else:
-          - action: switch.turn_off
-            target: {entity_id: switch.espink_7in5b_alert_active}
-      - action: text.set_value
-        target: {entity_id: text.espink_7in5b_alert_text}
-        data: {value: "{{ states('input_text.weather_warning_text') }}"}
-
-# ---------------------------------------------------------------------------
-# Phase 1 (USB, always-listening): refresh on a schedule + on source changes.
-# ---------------------------------------------------------------------------
 automation:
-  - alias: ESPINK periodic refresh
-    trigger:
+  - alias: ESPINK dashboard push
+    mode: single
+    triggers:
       - trigger: time_pattern
-        minutes: "/20"
-    action:
-      - action: script.espink_push_dashboard
-
-  # ---------------------------------------------------------------------------
-  # Phase 2 (battery sleepy device): the device wakes ~every 20 min, rejoins,
-  # and its entities become "available" again. Push the current values during
-  # that awake window — this is more reliable than Z2M's long-term queue.
-  # ---------------------------------------------------------------------------
-  - alias: ESPINK push on wake (device online)
-    trigger:
+        minutes: "/15"
       - trigger: state
-        entity_id: text.espink_7in5b_hdr_left
-        from: "unavailable"
-    action:
-      - action: script.espink_push_dashboard
+        entity_id: sensor.headache_index
+      - trigger: homeassistant
+        event: start
+    variables:
+      cond_map:
+        sunny: sun
+        clear-night: clear-night
+        partlycloudy: partly
+        cloudy: cloud
+        rainy: rain
+        pouring: rain
+        hail: snow
+        lightning: storm
+        lightning-rainy: storm
+        snowy: snow
+        snowy-rainy: snow
+        fog: fog
+        windy: wind
+        windy-variant: wind
+        exceptional: cloud
+    actions:
+      - action: weather.get_forecasts
+        target: {entity_id: weather.forecast_home}
+        data: {type: daily}
+        response_variable: fc
+      - variables:
+          fdays: "{{ fc['weather.forecast_home'].forecast if (fc is defined and fc.get('weather.forecast_home')) else [] }}"
+      - variables:
+          # Build one "day:icon:HH/LL" forecast string for offset d (1..3).
+          payload: >-
+            {% macro fcstr(d) -%}
+            {%- if fdays | length > d -%}
+            {%- set x = fdays[d] -%}
+            {{ as_timestamp(x.datetime) | timestamp_custom('%a') }}:{{ cond_map.get(x.condition,'cloud') }}:{{ x.temperature | round }}/{{ x.get('templow', x.temperature) | round }}
+            {%- endif -%}
+            {%- endmacro -%}
+            {{ {
+              'hdr_left': now().strftime('%a %-d %b'),
+              'hdr_right': 'Updated ' ~ now().strftime('%H:%M'),
+              'now_value': (state_attr('weather.forecast_home','temperature') | round | string) ~ 'C',
+              'now_label': cond_map.get(states('weather.forecast_home'),'cloud') ~ ':' ~ (states('weather.forecast_home') | replace('-',' ') | title),
+              'now_hilo': ((fdays[0].temperature | round | string) ~ '/' ~ (fdays[0].get('templow', fdays[0].temperature) | round | string)) if fdays | length > 0 else '',
+              'fc1': fcstr(1), 'fc2': fcstr(2), 'fc3': fcstr(3),
+              'sns1': 'Living room: ' ~ (states('sensor.lroom_sensor_temperature') | float(0) | round(1) | string) ~ 'C',
+              'sns2': 'Humidity: ' ~ (states('sensor.lroom_sensor_humidity') | float(0) | round | string) ~ '%',
+              'sns3': 'Air quality: ' ~ states('sensor.indoor_air_quality'),
+              'headache': (states('sensor.headache_index') | float(0) | round | string)
+            } }}
+      - action: mqtt.publish
+        data:
+          topic: zigbee2mqtt/ESPINK/set
+          payload: "{{ payload | to_json }}"

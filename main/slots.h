@@ -21,6 +21,7 @@ enum {
     ESPINK_ATTR_HDR_RIGHT   = 0x0001, /* status, e.g. "Updated 14:05" */
     ESPINK_ATTR_NOW_VALUE   = 0x0010, /* big value, e.g. "23°" */
     ESPINK_ATTR_NOW_LABEL   = 0x0011, /* "icon:text", e.g. "sun:Partly cloudy" */
+    ESPINK_ATTR_NOW_HILO    = 0x0012, /* today's "HH/LL"; HH>=25 renders red */
     ESPINK_ATTR_FC1         = 0x0020, /* forecast line 1 */
     ESPINK_ATTR_FC2         = 0x0021,
     ESPINK_ATTR_FC3         = 0x0022,
@@ -38,7 +39,7 @@ enum {
 };
 
 /* Number of addressable slots (must match the table in slots.c). */
-#define ESPINK_SLOT_COUNT 18
+#define ESPINK_SLOT_COUNT 19
 
 typedef struct {
     char value[ESPINK_SLOT_COUNT][ESPINK_SLOT_MAXLEN + 1];

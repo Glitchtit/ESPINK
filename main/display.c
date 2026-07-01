@@ -82,6 +82,61 @@ static uint8_t icon_glyph(const char *token)
 
 #define GET(slots, attr) espink_slots_get((slots), espink_slot_index_for_attr(attr))
 
+/* A high >= this renders red. */
+#define RED_HI_THRESHOLD 25
+#define NOW_HILO_BASE   184   /* today's hi/lo, under the big value */
+
+/* Draw a "HH/LL" hi/lo string. The high renders red (in the red pass) when it is
+ * >= RED_HI_THRESHOLD; the low and separator are always black. Both passes lay
+ * out identically so the red high sits exactly where the black one would. */
+static void draw_hilo(u8g2_t *u8g2, int x, int y, const uint8_t *font,
+                      const char *hilo, bool red_pass)
+{
+    if (hilo[0] == '\0') {
+        return;
+    }
+    const char *slash = strchr(hilo, '/');
+    char hi[8];
+    size_t n = slash ? (size_t)(slash - hilo) : strlen(hilo);
+    if (n > 7) {
+        n = 7;
+    }
+    memcpy(hi, hilo, n);
+    hi[n] = '\0';
+    bool hi_is_red = atoi(hi) >= RED_HI_THRESHOLD;
+
+    u8g2_SetFont(u8g2, font);
+    if (red_pass) {
+        if (hi_is_red) {
+            u8g2_DrawUTF8(u8g2, x, y, hi);
+        }
+        return;
+    }
+    if (!hi_is_red) {
+        u8g2_DrawUTF8(u8g2, x, y, hi);
+    }
+    if (slash) {
+        u8g2_DrawUTF8(u8g2, x + u8g2_GetUTF8Width(u8g2, hi), y, slash); /* "/LL" */
+    }
+}
+
+/* Extract the hi/lo (3rd colon field) of forecast slot i; "" if absent. */
+static void forecast_hilo(const espink_slots_t *s, int i, char *out, size_t n)
+{
+    static const uint16_t fc[] = {ESPINK_ATTR_FC1, ESPINK_ATTR_FC2, ESPINK_ATTR_FC3};
+    out[0] = '\0';
+    const char *c1 = strchr(GET(s, fc[i]), ':');
+    if (!c1) {
+        return;
+    }
+    const char *c2 = strchr(c1 + 1, ':');
+    if (!c2) {
+        return;
+    }
+    strncpy(out, c2 + 1, n - 1);
+    out[n - 1] = '\0';
+}
+
 static void draw_black_pass(u8g2_t *u8g2, const espink_slots_t *s)
 {
     char token[16];
@@ -107,6 +162,9 @@ static void draw_black_pass(u8g2_t *u8g2, const espink_slots_t *s)
     }
     u8g2_SetFont(u8g2, u8g2_font_helvR14_tf);
     u8g2_DrawUTF8(u8g2, NOW_VAL_X, NOW_LBL_BASE, text);
+    /* Today's high/low, small, under the big value (high red if >= 25). */
+    draw_hilo(u8g2, NOW_VAL_X, NOW_HILO_BASE, u8g2_font_helvR14_tf,
+              GET(s, ESPINK_ATTR_NOW_HILO), false);
 
     /* Forecast: three columns. */
     const uint16_t fc[] = {ESPINK_ATTR_FC1, ESPINK_ATTR_FC2, ESPINK_ATTR_FC3};
@@ -141,8 +199,7 @@ static void draw_black_pass(u8g2_t *u8g2, const espink_slots_t *s)
             u8g2_SetFont(u8g2, u8g2_font_open_iconic_weather_4x_t);
             u8g2_DrawGlyph(u8g2, x, FC_BASE + 42, fg);
         }
-        u8g2_SetFont(u8g2, u8g2_font_helvR14_tf);
-        u8g2_DrawUTF8(u8g2, x, FC_BASE + FC_ROW_H + 8, hilo);
+        draw_hilo(u8g2, x, FC_BASE + FC_ROW_H + 8, u8g2_font_helvR14_tf, hilo, false);
     }
 
     /* Headache indicator (right half, under the forecast). Text + level 1-4 icon
@@ -194,6 +251,19 @@ static void draw_red_pass(u8g2_t *u8g2, const espink_slots_t *s)
     u8g2_DrawUTF8(u8g2, M + 16, ALERT_BASE, GET(s, ESPINK_ATTR_ALERT_TEXT));
 }
 
+/* Red highs (>= 25) for today's hi/lo and the forecast columns. */
+static void draw_hilo_red(u8g2_t *u8g2, const espink_slots_t *s)
+{
+    draw_hilo(u8g2, NOW_VAL_X, NOW_HILO_BASE, u8g2_font_helvR14_tf,
+              GET(s, ESPINK_ATTR_NOW_HILO), true);
+    for (int i = 0; i < 3; i++) {
+        char hilo[16];
+        forecast_hilo(s, i, hilo, sizeof(hilo));
+        draw_hilo(u8g2, FC_X + i * FC_COL_W, FC_BASE + FC_ROW_H + 8,
+                  u8g2_font_helvR14_tf, hilo, true);
+    }
+}
+
 /* The Severe headache icon is drawn red for emphasis (all other levels are
  * black, drawn in draw_black_pass). */
 static void draw_headache_red(u8g2_t *u8g2, const espink_slots_t *s)
@@ -233,6 +303,7 @@ esp_err_t espink_display_render(espink_display_t *d, const espink_slots_t *slots
     u8g2_ClearBuffer(&d->u8g2);
     draw_red_pass(&d->u8g2, slots);
     draw_headache_red(&d->u8g2, slots);
+    draw_hilo_red(&d->u8g2, slots);
     espink_u8g2_to_plane(d->u8g2buf, d->red);
 
     ESP_LOGI(TAG, "rendering frame (full refresh)");
