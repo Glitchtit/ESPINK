@@ -7,7 +7,9 @@
 #include "esp_log.h"
 #include "esp_timer.h"
 #include "esp_check.h"
+#include "esp_pm.h"
 #include "esp_zigbee_core.h"
+#include "sdkconfig.h"
 
 static const char *TAG = "zigbee";
 
@@ -23,6 +25,9 @@ static const char *TAG = "zigbee";
  * exactly once, after every slot has landed. Re-armed on every write. */
 #define COALESCE_US          (10 * 1000 * 1000)  /* 10 s quiet window */
 #define ESPINK_ZB_STACK      6144
+/* Stay awake this long after boot: light sleep drops the native USB-Serial-JTAG,
+ * and a device that sleeps instantly on every boot can never be reflashed. */
+#define ESPINK_SLEEP_GRACE_MS 12000
 
 /* Slot attribute IDs and ZCL types, mirroring main/slots.h + the Z2M converter. */
 typedef struct {
@@ -66,6 +71,8 @@ static espink_slots_t s_slots;
 static esp_timer_handle_t s_coalesce_timer;
 static espink_repaint_cb_t s_cb;
 static void *s_ctx;
+/* Sleepy ED: only sleep once joined — commissioning must stay awake. */
+static volatile bool s_joined;
 
 /* --- coalescing --- */
 
@@ -189,6 +196,16 @@ void esp_zb_app_signal_handler(esp_zb_app_signal_t *signal_struct)
     esp_zb_app_signal_type_t sig_type = *p_sg_p;
 
     switch (sig_type) {
+    case ESP_ZB_COMMON_SIGNAL_CAN_SLEEP:
+#if CONFIG_PM_ENABLE
+        /* Sleep only after joining AND after the boot grace window — light sleep
+         * drops the native USB-Serial-JTAG, so the grace period keeps a
+         * flash/console window open every boot. */
+        if (s_joined && xTaskGetTickCount() >= pdMS_TO_TICKS(ESPINK_SLEEP_GRACE_MS)) {
+            esp_zb_sleep_now();
+        }
+#endif
+        break;
     case ESP_ZB_ZDO_SIGNAL_SKIP_STARTUP:
         ESP_LOGI(TAG, "stack started, begin commissioning");
         esp_zb_bdb_start_top_level_commissioning(ESP_ZB_BDB_MODE_INITIALIZATION);
@@ -201,6 +218,7 @@ void esp_zb_app_signal_handler(esp_zb_app_signal_t *signal_struct)
                 esp_zb_bdb_start_top_level_commissioning(ESP_ZB_BDB_MODE_NETWORK_STEERING);
             } else {
                 ESP_LOGI(TAG, "rejoined existing network");
+                s_joined = true;
             }
         } else {
             ESP_LOGW(TAG, "commissioning init failed (%s)", esp_err_to_name(err_status));
@@ -209,6 +227,7 @@ void esp_zb_app_signal_handler(esp_zb_app_signal_t *signal_struct)
     case ESP_ZB_BDB_SIGNAL_STEERING:
         if (err_status == ESP_OK) {
             ESP_LOGI(TAG, "joined network successfully");
+            s_joined = true;
         } else {
             ESP_LOGW(TAG, "steering failed; retrying in 1s");
             esp_zb_scheduler_alarm((esp_zb_callback_t)esp_zb_bdb_start_top_level_commissioning,
@@ -221,6 +240,24 @@ void esp_zb_app_signal_handler(esp_zb_app_signal_t *signal_struct)
     }
 }
 
+#if CONFIG_PM_ENABLE
+/* Enable automatic light sleep. CONFIG_PM_ENABLE + tickless idle are necessary but
+ * NOT sufficient: without esp_pm_configure(.light_sleep_enable=true) the C6 idles
+ * at full clock and never powers down between polls. Ported from ESPIR, which
+ * mirrors the esp-zigbee sleepy-end-device reference examples. */
+static void power_save_init(void)
+{
+    esp_pm_config_t pm = {
+        .max_freq_mhz = CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ,
+        .min_freq_mhz = CONFIG_XTAL_FREQ,
+#if CONFIG_FREERTOS_USE_TICKLESS_IDLE
+        .light_sleep_enable = true,
+#endif
+    };
+    ESP_ERROR_CHECK(esp_pm_configure(&pm));
+}
+#endif
+
 static void zb_task(void *arg)
 {
     (void)arg;
@@ -229,6 +266,11 @@ static void zb_task(void *arg)
         .host_config = {.host_connection_mode = ZB_HOST_CONNECTION_MODE_NONE},
     };
     ESP_ERROR_CHECK(esp_zb_platform_config(&platform));
+
+#if CONFIG_PM_ENABLE
+    power_save_init();          /* auto light sleep — without this the SED never powers down */
+    esp_zb_sleep_enable(true);  /* sleepy end device; must precede esp_zb_init() */
+#endif
 
     esp_zb_cfg_t zb_cfg = {
         .esp_zb_role = ESP_ZB_DEVICE_TYPE_ED,
@@ -239,6 +281,11 @@ static void zb_task(void *arg)
         },
     };
     esp_zb_init(&zb_cfg);
+    /* Sleepy end device: the radio must be OFF when idle (poll the parent for
+     * traffic). esp_zb_sleep_enable() only enables the sleep feature; without
+     * this the ED joins with rx_on_when_idle=true, keeps the radio on
+     * continuously, and never sleeps. */
+    esp_zb_set_rx_on_when_idle(false);
 
     esp_zb_ep_list_t *ep_list = esp_zb_ep_list_create();
     esp_zb_endpoint_config_t ep_cfg = {

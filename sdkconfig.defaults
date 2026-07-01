@@ -24,3 +24,10 @@ CONFIG_ESP_INT_WDT_TIMEOUT_MS=2000
 # --- Larger 802.15.4 RX buffer pool to absorb bursts of attribute writes
 # without the radio driver dropping/mishandling frames under load. ---
 CONFIG_IEEE802154_RX_BUFFER_SIZE=50
+
+# --- Power management (light-sleep sleepy end device, ESPIR pattern) ---
+# All three plus esp_zb_sleep_enable()/esp_pm_configure() in zigbee.c are
+# required; any one alone leaves the C6 at full clock and the battery flat.
+CONFIG_PM_ENABLE=y
+CONFIG_FREERTOS_USE_TICKLESS_IDLE=y
+CONFIG_PM_SLP_IRAM_OPT=y
