@@ -10,6 +10,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <math.h>
 #include "esp_log.h"
 #include "esp_heap_caps.h"
 #include "u8g2.h"
@@ -90,15 +91,17 @@ static int headache_value(const espink_slots_t *s)
     return v[0] == '\0' ? -1 : atoi(v);
 }
 
-/* Map a weather token to an open_iconic_weather glyph code (tune on hardware). */
+/* Map a weather token to an open_iconic_weather glyph. That font has only six
+ * glyphs: 0x40 cloud, 0x41 partly (cloud+sun), 0x42 moon, 0x43 rain, 0x44 snow
+ * (star), 0x45 sun. Conditions without a dedicated glyph fall back to nearest. */
 static uint8_t icon_glyph(const char *token)
 {
     struct { const char *t; uint8_t g; } map[] = {
-        {"sun", 0x45}, {"clear", 0x45}, {"clear-night", 0x47}, {"moon", 0x47},
-        {"cloud", 0x42}, {"cloudy", 0x42}, {"partly", 0x41},
+        {"sun", 0x45}, {"clear", 0x45}, {"clear-night", 0x42}, {"moon", 0x42},
+        {"cloud", 0x40}, {"cloudy", 0x40}, {"partly", 0x41},
         {"rain", 0x43}, {"rainy", 0x43}, {"drizzle", 0x43},
-        {"storm", 0x48}, {"thunder", 0x48}, {"snow", 0x44}, {"snowy", 0x44},
-        {"fog", 0x46}, {"mist", 0x46}, {"wind", 0x49}, {"windy", 0x49},
+        {"storm", 0x43}, {"thunder", 0x43}, {"snow", 0x44}, {"snowy", 0x44},
+        {"fog", 0x40}, {"mist", 0x40}, {"wind", 0x40}, {"windy", 0x40},
     };
     for (size_t i = 0; i < sizeof(map) / sizeof(map[0]); i++) {
         if (strcmp(map[i].t, token) == 0) {
@@ -125,6 +128,40 @@ static void draw_panel_frame(u8g2_t *u8g2, int x, int y, int w, int h)
 static void draw_checkbox(u8g2_t *u8g2, int x, int baseline)
 {
     u8g2_DrawFrame(u8g2, x, baseline - 12, 13, 13);
+}
+
+/* HA moon-phase state -> illuminated fraction (0 new .. 0.5 full .. ->1 new). */
+static double moon_phase_fraction(const char *tok)
+{
+    struct { const char *t; double f; } m[] = {
+        {"new_moon", 0.0}, {"waxing_crescent", 0.125}, {"first_quarter", 0.25},
+        {"waxing_gibbous", 0.375}, {"full_moon", 0.5}, {"waning_gibbous", 0.625},
+        {"last_quarter", 0.75}, {"waning_crescent", 0.875},
+    };
+    for (size_t i = 0; i < sizeof(m) / sizeof(m[0]); i++) {
+        if (strcmp(m[i].t, tok) == 0) {
+            return m[i].f;
+        }
+    }
+    return 0.5;
+}
+
+/* Moon disc with the lit portion filled black; phase 0=new .. 0.5=full .. 1=new
+ * (waxing lit on the right, waning on the left). */
+static void draw_moon(u8g2_t *u8g2, int cx, int cy, int r, double phase)
+{
+    double c = cos(2.0 * M_PI * phase);
+    for (int y = -r; y <= r; y++) {
+        int a = (int)(sqrt((double)(r * r - y * y)) + 0.5);
+        int b = (int)(a * c);
+        int x1, x2;
+        if (phase <= 0.5) { x1 = b; x2 = a; }   /* waxing: right lit */
+        else { x1 = -a; x2 = -b; }              /* waning: left lit */
+        if (x2 >= x1) {
+            u8g2_DrawHLine(u8g2, cx + x1, cy + y, x2 - x1 + 1);
+        }
+    }
+    u8g2_DrawCircle(u8g2, cx, cy, r, U8G2_DRAW_ALL);
 }
 
 /* Simple house glyph (roof + body + door) in the box [x..x+42, y..y+46]. */
@@ -301,6 +338,17 @@ static void draw_headache_panel(u8g2_t *u8g2, const espink_slots_t *s)
     snprintf(buf, sizeof(buf), "%s (%d%%)", k_headache_words[lvl - 1], hv);
     u8g2_SetFont(u8g2, u8g2_font_helvB18_tf);
     u8g2_DrawUTF8(u8g2, HDC_TEXT_X, 154, buf);
+
+    /* Moon phase (sns3 = "state:Friendly Name") in the panel's lower area. */
+    const char *moon = GET(s, ESPINK_ATTR_SNS3);
+    if (moon[0] != '\0') {
+        char tok[24];
+        const char *name;
+        espink_split_icon(moon, tok, sizeof(tok), &name);
+        draw_moon(u8g2, 462, 208, 20, moon_phase_fraction(tok));
+        u8g2_SetFont(u8g2, u8g2_font_helvR14_tf);
+        u8g2_DrawUTF8(u8g2, 500, 214, name);
+    }
 }
 
 static void draw_living_agenda_panel(u8g2_t *u8g2, const espink_slots_t *s)
@@ -309,8 +357,8 @@ static void draw_living_agenda_panel(u8g2_t *u8g2, const espink_slots_t *s)
     draw_house(u8g2, 40, 286);
     u8g2_SetFont(u8g2, u8g2_font_helvB14_tf);
     u8g2_DrawUTF8(u8g2, 18, LR_TITLE_BASE, "LIVING ROOM");
-    draw_temp_text(u8g2, 18, LR_L1_BASE, u8g2_font_helvR12_tf, GET(s, ESPINK_ATTR_SNS1), false);
-    u8g2_SetFont(u8g2, u8g2_font_helvR12_tf);
+    draw_temp_text(u8g2, 18, LR_L1_BASE, u8g2_font_helvR10_tf, GET(s, ESPINK_ATTR_SNS1), false);
+    u8g2_SetFont(u8g2, u8g2_font_helvR10_tf);
     u8g2_DrawUTF8(u8g2, 18, LR_L2_BASE, GET(s, ESPINK_ATTR_SNS2));
 
     u8g2_DrawVLine(u8g2, 150, PB_Y + 12, PB_H - 24);
@@ -385,7 +433,7 @@ static void draw_red_pass(u8g2_t *u8g2, const espink_slots_t *s)
     /* Hot current temperatures: hero value + the living-room tile. */
     draw_temp_text(u8g2, NOW_VAL_X, NOW_VAL_BASE, u8g2_font_fub30_tf,
                    GET(s, ESPINK_ATTR_NOW_VALUE), true);
-    draw_temp_text(u8g2, 18, LR_L1_BASE, u8g2_font_helvR12_tf, GET(s, ESPINK_ATTR_SNS1), true);
+    draw_temp_text(u8g2, 18, LR_L1_BASE, u8g2_font_helvR10_tf, GET(s, ESPINK_ATTR_SNS1), true);
 
     /* Hot highs: today + forecast columns. */
     draw_hilo(u8g2, NOW_HILO_X, NOW_HILO_BASE, u8g2_font_helvR14_tf,

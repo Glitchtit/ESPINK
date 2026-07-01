@@ -10,6 +10,8 @@
 #   now_label / fc* : "icon:text" or "day:icon:HH/LL"; icons = sun, cloud, rain,
 #                     storm, snow, fog, wind, partly, clear-night.
 #   now_hilo        : today's "HH/LL"; a high >= 25 renders red (also on fc*).
+#   sns3            : moon phase "state:Friendly" (state = sensor.moon_phase);
+#                     firmware draws the lit disc + the name in the headache panel.
 #   headache        : 0-100 index -> firmware picks the severity icon.
 #   Any tile ending in a Celsius temp >= 25 (now_value, sns*) renders red.
 
@@ -77,7 +79,7 @@ automation:
                 'sns1': 'Living room: ' ~ (states('sensor.lroom_sensor_temperature') | float(0) | round(1) | string) ~ '°C',
                 'sns2': 'Humidity: ' ~ (states('sensor.lroom_sensor_humidity') | float(0) | round | string) ~ '%'} }}
           b3: >-
-            {{ {'sns3': '', 'sns4': '',
+            {{ {'sns3': states('sensor.moon_phase') ~ ':' ~ (states('sensor.moon_phase') | replace('_',' ') | title), 'sns4': '',
                 'headache': (states('sensor.headache_index') | float(0) | round | string),
                 'shop1': shoplines[0] if shoplines | length > 0 else '',
                 'shop2': shoplines[1] if shoplines | length > 1 else ''} }}
