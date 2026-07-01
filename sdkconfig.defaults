@@ -17,13 +17,10 @@ CONFIG_LOG_DEFAULT_LEVEL_INFO=y
 # --- FreeRTOS tick at 1 kHz (recommended for the Zigbee stack timing) ---
 CONFIG_FREERTOS_HZ=1000
 
-# --- Coredump to flash (ELF) for post-mortem crash analysis ---
-CONFIG_ESP_COREDUMP_ENABLE_TO_FLASH=y
-CONFIG_ESP_COREDUMP_DATA_FORMAT_ELF=y
-CONFIG_ESP_COREDUMP_CHECKSUM_CRC32=y
-
-# --- Interrupt watchdog: relaxed to 2s. The e-paper SPI refresh briefly holds
-# off interrupts longer than the 300ms default (transient, not a hang), which
-# the aggressive default was hard-resetting on (TG1_WDT) mid-refresh. ---
+# --- Interrupt watchdog: relaxed to 2s for the long e-paper SPI refresh. ---
 CONFIG_ESP_INT_WDT=y
 CONFIG_ESP_INT_WDT_TIMEOUT_MS=2000
+
+# --- Larger 802.15.4 RX buffer pool to absorb bursts of attribute writes
+# without the radio driver dropping/mishandling frames under load. ---
+CONFIG_IEEE802154_RX_BUFFER_SIZE=50

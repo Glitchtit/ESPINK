@@ -8,6 +8,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "esp_log.h"
+#include "esp_attr.h"
 #include "nvs_flash.h"
 #include "slots.h"
 #include "display.h"
@@ -23,6 +24,10 @@ static const epd_uc8179_pins_t k_pins = {
     .clock_hz = 10 * 1000 * 1000,
     .mosi = 7, .sclk = 6, .cs = 10, .dc = 4, .rst = 5, .busy = 3, .pwr = 2,
 };
+
+#define BOOT_MAGIC 0xE5B00711u
+/* Retained across a soft reset (reboot) but random after a power cycle. */
+static RTC_NOINIT_ATTR uint32_t s_boot_magic;
 
 static espink_display_t *s_disp;
 static TaskHandle_t s_render_task;
@@ -69,8 +74,17 @@ void app_main(void)
     ESP_ERROR_CHECK(epd_uc8179_init(&k_pins, &epd));
     ESP_ERROR_CHECK(espink_display_create(epd, &s_disp));
 
-    /* Clear once so a freshly powered panel shows white until the first push. */
-    epd_uc8179_clear(epd);
+    /* Clear only on a true power-on, not on a reboot. E-paper retains its image
+     * without power, so skipping the clear on soft-resets means a crash/reboot
+     * leaves the last dashboard on screen instead of going blank. s_boot_magic
+     * survives a soft reset (RTC_NOINIT) but is random after power-on. */
+    if (s_boot_magic != BOOT_MAGIC) {
+        s_boot_magic = BOOT_MAGIC;
+        ESP_LOGI(TAG, "power-on: clearing panel");
+        epd_uc8179_clear(epd);
+    } else {
+        ESP_LOGI(TAG, "reboot: keeping last image");
+    }
 
     xTaskCreate(render_task, "espink_render", 8192, NULL, 4, &s_render_task);
     espink_zigbee_start(on_repaint_due, NULL);
