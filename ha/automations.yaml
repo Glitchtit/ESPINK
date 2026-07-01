@@ -54,10 +54,17 @@ automation:
             {% set names = names | map('truncate', 42, true, '..', 0) | list %}
             {% set total = names | length %}
             {{ names if total <= 6 else names[:5] + ['And ' ~ (total - 5) ~ ' more items'] }}
+          # Header: red (leading '~' = RED_MARK) on holidays (Holiday integration
+          # calendar 'on') and Sundays; append the holiday name on holidays.
+          hdr: >-
+            {% set hol = is_state('calendar.finland_11','on') %}
+            {% set red = hol or now().weekday() == 6 %}
+            {% set name = state_attr('calendar.finland_11','message') if hol else '' %}
+            {{ ('~' if red else '') ~ now().strftime('%a %-d %b') ~ (' - ' ~ name if name else '') }}
       # Build one "day:icon:HH/LL" forecast string for offset d (1..3).
       - variables:
           b1: >-
-            {{ {'hdr_left': now().strftime('%a %-d %b'),
+            {{ {'hdr_left': hdr,
                 'hdr_right': 'Updated ' ~ now().strftime('%H:%M'),
                 'now_value': (state_attr('weather.forecast_home','temperature') | round | string) ~ 'C',
                 'now_label': cond_map.get(states('weather.forecast_home'),'cloud') ~ ':' ~ (states('weather.forecast_home') | replace('-',' ') | title),

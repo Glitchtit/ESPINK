@@ -106,6 +106,27 @@ static uint8_t icon_glyph(const char *token)
 /* A high >= this renders red. */
 #define RED_HI_THRESHOLD 25
 
+/* A slot value beginning with this char is drawn red (the marker is stripped).
+ * HA prepends it to flag e.g. a holiday/Sunday header. Printable '~' avoids
+ * control-char escaping issues through JSON/MQTT; no dashboard text starts with it. */
+#define RED_MARK '~'
+
+/* Draw a value that may carry the RED_MARK prefix: marked -> red plane, plain
+ * -> black. Call in both passes; it draws exactly once (red_pass == marked). */
+static void draw_marked(u8g2_t *u8g2, int x, int y, const uint8_t *font,
+                        const char *text, bool red_pass)
+{
+    bool marked = (text[0] == RED_MARK);
+    const char *content = marked ? text + 1 : text;
+    if (content[0] == '\0') {
+        return;
+    }
+    if (red_pass == marked) {
+        u8g2_SetFont(u8g2, font);
+        u8g2_DrawUTF8(u8g2, x, y, content);
+    }
+}
+
 /* Sensor tile i position (vertical stack, left column). */
 static void sns_xy(int i, int *x, int *y)
 {
@@ -184,9 +205,9 @@ static void draw_black_pass(u8g2_t *u8g2, const espink_slots_t *s)
     char token[16];
     const char *text;
 
-    /* Header. */
+    /* Header. hdr_left may be red-marked (holiday/Sunday). */
+    draw_marked(u8g2, M, HDR_BASE, u8g2_font_helvR14_tf, GET(s, ESPINK_ATTR_HDR_LEFT), false);
     u8g2_SetFont(u8g2, u8g2_font_helvR14_tf);
-    u8g2_DrawUTF8(u8g2, M, HDR_BASE, GET(s, ESPINK_ATTR_HDR_LEFT));
     const char *hr = GET(s, ESPINK_ATTR_HDR_RIGHT);
     int hrw = u8g2_GetUTF8Width(u8g2, hr);
     u8g2_DrawUTF8(u8g2, ESPINK_FB_WIDTH - M - hrw, HDR_BASE, hr);
@@ -376,6 +397,8 @@ esp_err_t espink_display_render(espink_display_t *d, const espink_slots_t *slots
     draw_headache_red(&d->u8g2, slots);
     draw_hilo_red(&d->u8g2, slots);
     draw_temps_red(&d->u8g2, slots);
+    draw_marked(&d->u8g2, M, HDR_BASE, u8g2_font_helvR14_tf,
+                GET(slots, ESPINK_ATTR_HDR_LEFT), true);
     espink_u8g2_to_plane(d->u8g2buf, d->red);
 
     ESP_LOGI(TAG, "rendering frame (full refresh)");
