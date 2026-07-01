@@ -50,7 +50,13 @@ esp_err_t epd_uc8179_panel_init(epd_uc8179_dev_t *dev);
 
 /* Push both planes and trigger a full refresh; blocks until the panel is idle.
  * black/red are each EPD_UC8179_PLANE_BYTES. red may be NULL (treated as blank,
- * giving a black/white-only image). */
+ * giving a black/white-only image).
+ *
+ * Self-recovering: if a refresh doesn't signal completion (BUSY timeout / SPI
+ * error) — e.g. a supply sag mid-waveform leaving the panel dim/inverted — it
+ * re-inits the controller and redraws (see EPD_REFRESH_RETRIES). If every
+ * attempt fails it blanks the panel to white so it is never left corrupt, and
+ * returns the original error. Worst-case blocks a few * EPD_BUSY_TIMEOUT_MS. */
 esp_err_t epd_uc8179_display(epd_uc8179_dev_t *dev,
                              const uint8_t *black, const uint8_t *red);
 

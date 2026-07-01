@@ -14,6 +14,12 @@ static const char *TAG = "epd_uc8179";
  * idle. Cap the wait so a missing/miswired panel can't hang the task forever. */
 #define EPD_BUSY_TIMEOUT_MS 40000
 
+/* How many times to re-init + redraw when a refresh doesn't signal completion.
+ * The usual cause is a transient supply sag on the high-current 3-colour refresh
+ * that has passed by the retry, so one extra attempt catches almost all cases;
+ * keep it small since each failed attempt burns up to EPD_BUSY_TIMEOUT_MS. */
+#define EPD_REFRESH_RETRIES 1
+
 struct epd_uc8179_dev {
     epd_uc8179_pins_t pins;
     spi_device_handle_t spi;
@@ -236,8 +242,11 @@ esp_err_t epd_uc8179_init(const epd_uc8179_pins_t *pins, epd_uc8179_dev_t **out)
     return ESP_OK;
 }
 
-esp_err_t epd_uc8179_display(epd_uc8179_dev_t *dev,
-                             const uint8_t *black, const uint8_t *red)
+/* One attempt: push both planes and fire a single refresh. Returns the BUSY
+ * wait result — ESP_ERR_TIMEOUT means the panel never signalled completion and
+ * is left mid-waveform (dim/ghosted/inverted). The public wrapper handles that. */
+static esp_err_t epd_do_refresh(epd_uc8179_dev_t *dev,
+                                const uint8_t *black, const uint8_t *red)
 {
     esp_err_t err;
 
@@ -264,6 +273,50 @@ esp_err_t epd_uc8179_display(epd_uc8179_dev_t *dev,
     epd_cmd(dev, 0x12);                                   /* refresh */
     vTaskDelay(pdMS_TO_TICKS(100));
     return epd_wait_idle(dev);
+}
+
+esp_err_t epd_uc8179_display(epd_uc8179_dev_t *dev,
+                             const uint8_t *black, const uint8_t *red)
+{
+    esp_err_t err = ESP_OK;
+
+    for (int attempt = 0; attempt <= EPD_REFRESH_RETRIES; attempt++) {
+        if (attempt > 0) {
+            /* The previous refresh never signalled completion, so the panel is
+             * frozen mid-waveform (the dim/inverted state). A full HW reset +
+             * re-init aborts the stuck waveform and puts the controller back in
+             * a known state; then we redraw the whole frame from scratch. */
+            ESP_LOGW(TAG, "refresh did not complete (%s); recovering panel (retry %d/%d)",
+                     esp_err_to_name(err), attempt, EPD_REFRESH_RETRIES);
+            esp_err_t rerr = epd_uc8179_panel_init(dev);
+            if (rerr != ESP_OK) {
+                ESP_LOGE(TAG, "panel re-init failed during recovery: %s",
+                         esp_err_to_name(rerr));
+            }
+        }
+        err = epd_do_refresh(dev, black, red);
+        if (err == ESP_OK) {
+            if (attempt > 0) {
+                ESP_LOGI(TAG, "refresh recovered on retry %d", attempt);
+            }
+            return ESP_OK;
+        }
+    }
+
+    /* Out of retries. Never leave the panel stuck mid-waveform: blank it to a
+     * clean white so the failure degrades to an empty dashboard rather than a
+     * corrupt one. The next slot push repaints normally. Best effort — if the
+     * panel is genuinely unresponsive this clear also times out, and we still
+     * report the original refresh error to the caller. */
+    ESP_LOGE(TAG, "refresh failed after %d retr%s (%s); clearing to avoid a corrupt image",
+             EPD_REFRESH_RETRIES, EPD_REFRESH_RETRIES == 1 ? "y" : "ies",
+             esp_err_to_name(err));
+    epd_uc8179_panel_init(dev);                           /* fresh state pre-clear */
+    esp_err_t cerr = epd_uc8179_clear(dev);
+    if (cerr != ESP_OK) {
+        ESP_LOGE(TAG, "recovery clear also failed: %s", esp_err_to_name(cerr));
+    }
+    return err;                                           /* original failure */
 }
 
 esp_err_t epd_uc8179_clear(epd_uc8179_dev_t *dev)
