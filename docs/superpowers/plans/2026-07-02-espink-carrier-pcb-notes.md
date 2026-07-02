@@ -150,3 +150,53 @@ off placed flags which cannot be scripted), Cs caps C13–C15 mark-DNP in BOM.
 - DW01A: VDD←R(100Ω C2907218)←VBAT, C3 100nF VDD→BATN, VSS→BATN, CSI→R(1k)→GND, OD→U4.G1, OC→U4.G2
 - FS8205A: S1→BATN, G1→DWOD, D1/D2 pins 2+5 tied (net DMID), S2→GND, G2→DWOC
 - Extra parts added vs plan netlist: R 100Ω (DW01 VDD filter), R 1k CS (uses sourced 1k)
+
+## Tasks 6–7: PCB converted, placed, routed, poured (2026-07-02)
+
+- **Converted** schematic→PCB (54 footprints, all imported).
+- **Net-class rules:** POWER track rule = 0.5 mm, bound to GND, VBUS, VBAT,
+  BATN, VSYS, V3V3 (Design Rule → Rule Management/Net Rule). Signals + high-Z
+  sense taps stay at the 10 mil default.
+- **Placement by function:** 40-pin RPi header (Z1) along the top edge; the two
+  18650 holders (BT1/BT2) fill the board centre; charger/protection block
+  (U2/U3/U4/U8/Q1/Q4/Q5/D2 + passives) at top-left; U5 LDO + caps mid; U1 WROOM
+  at the right edge with its **antenna castellation facing off the right board
+  edge**; USB-C + ESD (D1) + the 3 TTP223 touch ICs (U6/U7/U8) along the
+  **bottom edge**.
+- **Antenna copper keep-out:** Prohibited Region, Multi-Layer, Copper + Fill
+  Region + Plane Zone only, over the U1 antenna end to the right board edge
+  (Start X 4100 / Y 1600 / W 840 / H 600 mil).
+- **Board outline:** 100 × 71 mm (Start X 1000 / Y 3800 / W 3940 / H 2800),
+  2.5 mm corner radius. **One M3 mounting pad** placed (6 mm pad / 3.2 mm hole,
+  no net) at 1180,1180 — the other three corners + the two Pi-standoff holes
+  are a human-finish item (Alt+P pad, copy-paste, fix Center Y + clear net per
+  the skill's paste-panel gotcha).
+- **Auto-routed** 2-layer (All Nets, 45°, both layers, Completion first) → the
+  autorouter completed the large majority of nets (DRC dropped 226→63).
+- **GND pours** top + bottom (oversized rect Start X 800 / Y 4000 / W 4340 /
+  H 3200, Net=GND, Layer set per pour, Keep Island=No), `Shift+B` → DRC 63→56.
+
+### Handoff DRC state: 56 items (all human-finish per skill division-of-labour)
+
+- **~9 Clearance errors** — localized to the bottom USB-C/touch/ESD cluster
+  (board-outline-to-pad and pad-to-pad); need minor component nudges (the
+  cluster is packed against the bottom edge and each other).
+- **~2 Track-to-Via** — near the routed cluster.
+- **Remaining Connection errors** — unrouted signal nets the autorouter left:
+  **TOUCH1/TOUCH2/TOUCH3 (U1 IO18/19/20 ↔ U6/U7/U8) and BOOT (U1 IO15 ↔ SW2)**,
+  plus a few short signals near the WROOM module. GND-net connection errors are
+  largely resolved by the pours.
+
+### Left for the human (skill's explicit fine-fab-touches boundary)
+
+1. Nudge the bottom USB-C/touch/ESD cluster to clear the ~9 clearance errors,
+   and re-verify the USB-C mouth overhangs the bottom edge (measure head-on).
+2. Finish-route TOUCH1/2/3 + BOOT (short, hand-route or re-autoroute after the
+   nudge), then `Shift+B` to reflow pours.
+3. Add the other 3 M3 corner mounting pads + 2 Pi-HAT standoff holes.
+4. GUI No-Connect flags on intended-NC pins (cosmetic — clears the SCH-DRC
+   floating warning; can't be scripted in V3.2.148).
+5. GND stitching vias between the two pours (Filter→Copper Region→Ctrl+A→
+   Place/Remove Suture Vias) — optional on a 2-layer low-speed board.
+6. Final DRC → All (0), 3D review, then Gerber/BOM export + JLCPCB/LCSC order
+   (ordering is the user's action).
