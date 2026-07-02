@@ -116,6 +116,34 @@ first tier ≤ 100). **All codes probe-resolve via `getByLcscIds` and expose pin
 - **J3 1×3**: 1,2,3 · **BT holder C5290175**: pins 1,2 — **polarity NOT in symbol; verify +/− on footprint silk at layout before wiring convention is final** (assume 1=+, confirm in T6)
 - **SW TS-1187A C318884**: pins A/B/C/D; symbol draws the switch contact between **3(C) and 4(D)** → wire signal→3, GND→4; **NC-flag 1(A), 2(B)** (works under any internal pole pairing)
 
+## Tasks 3–5: schematic captured (2026-07-02)
+
+**MAJOR MODULE CHANGE — U1 is now ESP32-C6-WROOM-1-N8 (`C5386877`, stock 2,026,
+JLCPCB 4,024, MOQ 1), NOT the MINI-1:**
+- The MINI-1 does **not expose GPIO10** (module pins jump IO9→IO12) — the
+  validated firmware CS pin. The WROOM-1 exposes IO10 → **firmware pin map
+  stays fully unchanged** (and N8 = the spec's original 8 MB).
+- Neither WROOM-1 code resolves via `getByLcscIds` (same per-code API blocker
+  as the skill's ESP32-C6FH4 case) — but a **GUI-placed** WROOM-1-N8 exposes
+  all 37 pins to the API, so it was placed via the picker and script-wired.
+- **WROOM-1 has no GPIO14** → touch inputs moved to **TOUCH1=IO18,
+  TOUCH2=IO19, TOUCH3=IO20** (wake-capable, non-strapping). Firmware follow-up
+  uses these.
+- WROOM-1-N8 pin map (probed, 37 pins): 1 GND, 2 3V3, 3 EN, 4 IO4, 5 IO5,
+  6 IO6, 7 IO7, 8 IO0, 9 IO1, 10 IO8, 11 IO10, 12 IO11, 13 IO12, 14 IO13,
+  15 IO9, 16 IO18, 17 IO19, 18 IO20, 19 IO21, 20 IO22, 21 IO23, 22 NC,
+  23 IO15, 24 RXD0, 25 TXD0, 26 IO3, 27 IO2, 28–37 GND.
+
+Captured in 3 scripted passes (25 power parts + 14 MCU-section + 14 header/touch
+= 53 parts + U1). **SCH DRC: Fatal 0 / Error 0**; warnings = the consolidated
+floating-pin list (verified: only intended NCs — USB-C SBU1/2, U1 spares
+IO8/IO11/IO15/IO21-23/RXD0/TXD0/NC, header's 23 unused pins, switch duplicate
+pins 1/2, DW01A+XC6220 NC pins) + "Device Standardization: U1" attribute notice
+(handle at BOM export).
+
+Deferred to handoff: GUI NC flags on the intended-NC pins (cosmetic; DRC keys
+off placed flags which cannot be scripted), Cs caps C13–C15 mark-DNP in BOM.
+
 ### DW01A/FS8205A wiring (standard app circuit, from probed pins)
 
 - Cell− = net **BATN**; system GND = pack−.
