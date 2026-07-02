@@ -7,6 +7,8 @@ SIZE = 72
 THRESH = 150  # 0..255; pixels darker than this become ink (bit=1)
 # per-image threshold tweaks (the calm avatar is dark; the KO is sparse)
 THRESH_BY_N = {1: 120, 2: 150, 3: 150, 4: 150, 5: 150}
+# per-image source overrides (already-1-bit redraws etc.)
+SRC_BY_N = {3: 'headache_3_v2.png'}
 
 hdr = ['/* Auto-generated 1-bit headache severity icons (72x72) for u8g2 DrawXBM.',
        ' * Regenerate with scratchpad/mkicons.py from the HA /local/control/headache_*.png.',
@@ -21,7 +23,7 @@ row_bytes = (SIZE + 7) // 8
 verif = Image.new('L', (SIZE * 5 + 24, SIZE), 200)
 
 for n in range(1, 6):
-    im = Image.open(f'headache_{n}.png').convert('RGBA')
+    im = Image.open(SRC_BY_N.get(n, f'headache_{n}.png')).convert('RGBA')
     bg = Image.new('RGBA', im.size, (255, 255, 255, 255))
     im = Image.alpha_composite(bg, im).convert('L').resize((SIZE, SIZE), Image.LANCZOS)
     px = im.load()
