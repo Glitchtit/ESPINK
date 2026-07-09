@@ -146,8 +146,9 @@ static double moon_phase_fraction(const char *tok)
     return 0.5;
 }
 
-/* Moon disc with the lit portion filled black; phase 0=new .. 0.5=full .. 1=new
- * (waxing lit on the right, waning on the left). */
+/* Moon disc with the shadowed portion filled black (lit portion stays white);
+ * phase 0=new .. 0.5=full .. 1=new (waxing lit on the right, waning on the
+ * left). */
 static void draw_moon(u8g2_t *u8g2, int cx, int cy, int r, double phase)
 {
     double c = cos(2.0 * M_PI * phase);
@@ -155,8 +156,8 @@ static void draw_moon(u8g2_t *u8g2, int cx, int cy, int r, double phase)
         int a = (int)(sqrt((double)(r * r - y * y)) + 0.5);
         int b = (int)(a * c);
         int x1, x2;
-        if (phase <= 0.5) { x1 = b; x2 = a; }   /* waxing: right lit */
-        else { x1 = -a; x2 = -b; }              /* waning: left lit */
+        if (phase <= 0.5) { x1 = -a; x2 = b; }  /* waxing: left shadowed */
+        else { x1 = -b; x2 = a; }               /* waning: right shadowed */
         if (x2 >= x1) {
             u8g2_DrawHLine(u8g2, cx + x1, cy + y, x2 - x1 + 1);
         }
