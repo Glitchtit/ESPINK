@@ -60,12 +60,14 @@ static const int k_fc_cx[3] = {70, 196, 322};   /* forecast column centres */
 #define AG_TITLE_BASE 288
 #define AG_BASE       316   /* first agenda item */
 #define AG_ROW_H      31
+#define AG_TEXT_R     (PL_X + PL_W - 12)   /* right limit, inside inner frame */
 
 /* shopping panel */
 #define SH_TITLE_BASE 294
 #define SH_X          446
 #define SH_BASE       320
 #define SH_ROW_H      24
+#define SH_TEXT_R     (PR_X + PR_W - 12)
 
 /* colour thresholds */
 #define RED_HI_THRESHOLD 25
@@ -123,6 +125,39 @@ static void draw_panel_frame(u8g2_t *u8g2, int x, int y, int w, int h)
     u8g2_DrawLine(u8g2, x + w - 11 - t, y + 10, x + w - 11, y + 10 + t);
     u8g2_DrawLine(u8g2, x + 10, y + h - 11 - t, x + 10 + t, y + h - 11);
     u8g2_DrawLine(u8g2, x + w - 11 - t, y + h - 11, x + w - 11, y + h - 11 - t);
+}
+
+/* Draw UTF-8 text clipped to max_w pixels; overlong text is cut at a codepoint
+ * boundary and ends in "..." (the _tf fonts have no U+2026). */
+static void draw_utf8_fit(u8g2_t *u8g2, int x, int y, int max_w, const char *text)
+{
+    if (u8g2_GetUTF8Width(u8g2, text) <= max_w) {
+        u8g2_DrawUTF8(u8g2, x, y, text);
+        return;
+    }
+    char buf[ESPINK_SLOT_MAXLEN + 4];
+    size_t n = strlen(text);
+    if (n > ESPINK_SLOT_MAXLEN) {
+        n = ESPINK_SLOT_MAXLEN;
+    }
+    while (n > 0) {
+        /* Step back one codepoint (skip UTF-8 continuation bytes). */
+        do {
+            n--;
+        } while (n > 0 && ((uint8_t)text[n] & 0xC0) == 0x80);
+        while (n > 0 && text[n - 1] == ' ') {
+            n--;
+        }
+        memcpy(buf, text, n);
+        strcpy(buf + n, "...");
+        if (u8g2_GetUTF8Width(u8g2, buf) <= max_w) {
+            break;
+        }
+    }
+    if (n == 0) {
+        strcpy(buf, "...");
+    }
+    u8g2_DrawUTF8(u8g2, x, y, buf);
 }
 
 static void draw_checkbox(u8g2_t *u8g2, int x, int baseline)
@@ -386,7 +421,7 @@ static void draw_living_agenda_panel(u8g2_t *u8g2, const espink_slots_t *s)
         }
         int y = AG_BASE + i * AG_ROW_H;
         draw_checkbox(u8g2, AG_X, y);
-        u8g2_DrawUTF8(u8g2, AG_X + 20, y, it);
+        draw_utf8_fit(u8g2, AG_X + 20, y, AG_TEXT_R - (AG_X + 20), it);
     }
 }
 
@@ -406,7 +441,7 @@ static void draw_shopping_panel(u8g2_t *u8g2, const espink_slots_t *s)
         }
         int y = SH_BASE + i * SH_ROW_H;
         draw_checkbox(u8g2, PR_X + 12, y);
-        u8g2_DrawUTF8(u8g2, SH_X, y, it);
+        draw_utf8_fit(u8g2, SH_X, y, SH_TEXT_R - SH_X, it);
     }
 }
 
