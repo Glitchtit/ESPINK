@@ -8,7 +8,8 @@
 # COALESCE_US): it only repaints once no slot has changed for 10 s, so the whole
 # push (5 batches x 900 ms + jitter) must land BEFORE that window elapses — the
 # ~26 s refresh then runs once, on complete data, without blocking reception.
-# Refreshes every 15 min (each 3-colour e-paper refresh is ~26s).
+# Refreshes every 15 min (each 3-colour e-paper refresh is ~26s), on HA start,
+# and ~30 s after the device announces itself on reboot/rejoin.
 #
 # Slot conventions (see main/display.c):
 #   now_label / fc* : "icon:text" or "day:icon:HH/LL"; icons = sun, cloud, rain,
@@ -27,6 +28,13 @@ automation:
         minutes: "/15"
       - trigger: homeassistant
         event: start
+      # The device rebooted/rejoined (power loss, reflash, crash): Z2M publishes
+      # a device_announce, and the panel may be blank after a power-on clear.
+      - trigger: mqtt
+        topic: zigbee2mqtt/bridge/event
+        value_template: "{{ value_json.type ~ ':' ~ value_json.data.friendly_name }}"
+        payload: "device_announce:ESPINK"
+        id: device_announce
     variables:
       cond_map:
         sunny: sun
@@ -45,6 +53,12 @@ automation:
         windy-variant: wind
         exceptional: cloud
     actions:
+      # Let the boot-time panel clear (~26 s full refresh) finish first.
+      - if:
+          - condition: trigger
+            id: device_announce
+        then:
+          - delay: {seconds: 30}
       - action: weather.get_forecasts
         target: {entity_id: weather.forecast_home}
         data: {type: daily}
