@@ -53,9 +53,11 @@ static const int k_fc_cx[3] = {70, 196, 322};   /* forecast column centres */
 #define HDC_TEXT_X   524
 
 /* living-room + agenda panel */
-#define LR_TITLE_BASE 360
-#define LR_L1_BASE    384   /* sns1 (temperature) */
-#define LR_L2_BASE    404   /* sns2 (humidity) */
+#define LR_X          18    /* tile column: LR_X..LR_R, left of the divider */
+#define LR_R          146
+#define LR_TITLE_BASE 288   /* same baseline as the agenda title */
+#define LR_TEMP_BASE  350   /* sns1 (temperature) */
+#define LR_HUM_BASE   406   /* sns2 (humidity) */
 #define AG_X          160
 #define AG_TITLE_BASE 288
 #define AG_BASE       316   /* first agenda item */
@@ -200,12 +202,19 @@ static void draw_moon(u8g2_t *u8g2, int cx, int cy, int r, double phase)
     u8g2_DrawCircle(u8g2, cx, cy, r, U8G2_DRAW_ALL);
 }
 
-/* Simple house glyph (roof + body + door) in the box [x..x+42, y..y+46]. */
+/* Small house glyph (roof + body + door) in the box [x..x+16, y..y+16]. */
 static void draw_house(u8g2_t *u8g2, int x, int y)
 {
-    u8g2_DrawTriangle(u8g2, x, y + 18, x + 21, y, x + 42, y + 18);
-    u8g2_DrawFrame(u8g2, x + 6, y + 18, 30, 28);
-    u8g2_DrawFrame(u8g2, x + 17, y + 32, 8, 14);
+    u8g2_DrawTriangle(u8g2, x, y + 7, x + 8, y - 1, x + 17, y + 7);
+    u8g2_DrawFrame(u8g2, x + 2, y + 7, 13, 10);
+    u8g2_DrawBox(u8g2, x + 7, y + 11, 4, 6);
+}
+
+/* Water-drop glyph: a disc with a pointed top, centred on cx, bottom at y+r. */
+static void draw_drop(u8g2_t *u8g2, int cx, int cy, int r)
+{
+    u8g2_DrawDisc(u8g2, cx, cy, r, U8G2_DRAW_ALL);
+    u8g2_DrawTriangle(u8g2, cx - r, cy, cx, cy - 2 * r - 2, cx + r + 1, cy);
 }
 
 /* Simple shopping-cart glyph near (x, y). */
@@ -294,6 +303,54 @@ static void forecast_hilo(const espink_slots_t *s, int i, char *out, size_t n)
     }
     strncpy(out, c2 + 1, n - 1);
     out[n - 1] = '\0';
+}
+
+/* Strip a "Label: " prefix from a sensor slot ("Humidity: 46%" -> "46%"), so
+ * the tile shows only the value whether or not HA sends a label. */
+static const char *sensor_value(const char *text)
+{
+    const char *colon = strrchr(text, ':');
+    if (!colon) {
+        return text;
+    }
+    colon++;
+    while (*colon == ' ') {
+        colon++;
+    }
+    return colon;
+}
+
+/* Living-room temperature, centred in the tile: the number in a large font
+ * with the "°C" unit smaller and top-aligned. Drawn in the red pass instead of
+ * the black one when it is hot. */
+static void draw_living_temp(u8g2_t *u8g2, const espink_slots_t *s, bool red_pass)
+{
+    const char *v = sensor_value(GET(s, ESPINK_ATTR_SNS1));
+    if (v[0] == '\0' || red_pass != espink_celsius_at_least(v, RED_HI_THRESHOLD)) {
+        return;
+    }
+    char num[16];
+    const char *deg = strstr(v, "\xC2\xB0");   /* UTF-8 degree sign */
+    size_t n = deg ? (size_t)(deg - v) : strlen(v);
+    if (n >= sizeof(num)) {
+        n = sizeof(num) - 1;
+    }
+    memcpy(num, v, n);
+    num[n] = '\0';
+    const char *unit = deg ? deg : "";
+
+    u8g2_SetFont(u8g2, u8g2_font_fub30_tf);
+    int nw = u8g2_GetUTF8Width(u8g2, num);
+    u8g2_SetFont(u8g2, u8g2_font_helvB14_tf);
+    int uw = u8g2_GetUTF8Width(u8g2, unit);
+    int x = LR_X + (LR_R - LR_X - nw - uw - 2) / 2;
+    if (x < LR_X) {
+        x = LR_X;
+    }
+    u8g2_SetFont(u8g2, u8g2_font_fub30_tf);
+    u8g2_DrawUTF8(u8g2, x, LR_TEMP_BASE, num);
+    u8g2_SetFont(u8g2, u8g2_font_helvB14_tf);
+    u8g2_DrawUTF8(u8g2, x + nw + 2, LR_TEMP_BASE - 16, unit);
 }
 
 /* ---- panels ---- */
@@ -400,12 +457,21 @@ static void draw_headache_panel(u8g2_t *u8g2, const espink_slots_t *s)
 static void draw_living_agenda_panel(u8g2_t *u8g2, const espink_slots_t *s)
 {
     draw_panel_frame(u8g2, PL_X, PB_Y, PL_W, PB_H);
-    draw_house(u8g2, 40, 286);
-    u8g2_SetFont(u8g2, u8g2_font_helvB14_tf);
-    u8g2_DrawUTF8(u8g2, 18, LR_TITLE_BASE, "LIVING ROOM");
-    draw_temp_text(u8g2, 18, LR_L1_BASE, u8g2_font_helvR10_tf, GET(s, ESPINK_ATTR_SNS1), false);
-    u8g2_SetFont(u8g2, u8g2_font_helvR10_tf);
-    u8g2_DrawUTF8(u8g2, 18, LR_L2_BASE, GET(s, ESPINK_ATTR_SNS2));
+    draw_house(u8g2, LR_X, LR_TITLE_BASE - 15);
+    u8g2_SetFont(u8g2, u8g2_font_helvB12_tf);
+    u8g2_DrawUTF8(u8g2, LR_X + 22, LR_TITLE_BASE, "LIVING RM");
+    u8g2_DrawHLine(u8g2, LR_X, LR_TITLE_BASE + 8, LR_R - LR_X);
+
+    draw_living_temp(u8g2, s, false);
+
+    const char *hum = sensor_value(GET(s, ESPINK_ATTR_SNS2));
+    if (hum[0] != '\0') {
+        u8g2_SetFont(u8g2, u8g2_font_fub20_tf);
+        int hw = u8g2_GetUTF8Width(u8g2, hum);
+        int x = LR_X + (LR_R - LR_X - hw - 18) / 2;
+        draw_drop(u8g2, x + 6, LR_HUM_BASE - 7, 6);
+        u8g2_DrawUTF8(u8g2, x + 18, LR_HUM_BASE, hum);
+    }
 
     u8g2_DrawVLine(u8g2, 150, PB_Y + 12, PB_H - 24);
 
@@ -479,7 +545,7 @@ static void draw_red_pass(u8g2_t *u8g2, const espink_slots_t *s)
     /* Hot current temperatures: hero value + the living-room tile. */
     draw_temp_text(u8g2, NOW_VAL_X, NOW_VAL_BASE, u8g2_font_fub30_tf,
                    GET(s, ESPINK_ATTR_NOW_VALUE), true);
-    draw_temp_text(u8g2, 18, LR_L1_BASE, u8g2_font_helvR10_tf, GET(s, ESPINK_ATTR_SNS1), true);
+    draw_living_temp(u8g2, s, true);
 
     /* Hot highs: today + forecast columns. */
     draw_hilo(u8g2, NOW_HILO_X, NOW_HILO_BASE, u8g2_font_helvR14_tf,
